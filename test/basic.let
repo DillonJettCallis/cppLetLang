@@ -1,9 +1,9 @@
 
 
 
-let x: Int = 4;
+let x: Int = 4 + 2 * 7
 
-
+let y: Int = 4 * 2 + 7
 
 
 

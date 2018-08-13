@@ -5,3 +5,5 @@
 # CMake
 cmake-build-debug
 
+# My build and test stuff
+build

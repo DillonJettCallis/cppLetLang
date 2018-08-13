@@ -8,14 +8,6 @@ int main() {
     try {
         auto tokens = parseFile(R"(C:\Users\Dillon\Projects\typedLetLang\test\basic.let)");
 
-        std::cout << "{";
-
-        for (auto next : tokens) {
-            std::cout << "'" << next.word << "', ";
-        }
-
-        std::cout << "'EOF'}" << std::endl;
-
         lexAndPrint(tokens);
 
         return 0;

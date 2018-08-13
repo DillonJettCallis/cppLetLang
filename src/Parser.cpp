@@ -7,108 +7,18 @@
 #include <memory>
 #include <utility>
 #include <fstream>
+#include <fstream>
+#include <set>
 #include "Utils.h"
+#include "Tokens.h"
+#include "Ast.h"
 
 typedef std::istreambuf_iterator<char> CharStream;
 
-Location::Location(std::string _sourceFile, int _x, int _y) {
-    sourceFile = std::move(_sourceFile);
-    x = _x;
-    y = _y;
-}
-
-std::string Location::pretty() {
-    return "file: " + sourceFile + ", line: " + std::to_string(y) + ", col: " + std::to_string(x);
-}
-
-Token::Token(Location loc, std::string value, TokenType type): loc(std::move(loc)), word(std::move(value)), type(type) {
-
-};
-
-std::string Token::expected(std::string expected) {
-    return "Expected " + expected + " at " + loc.pretty() + " but found '" + word + "'";
-}
-
-enum TypeTokenKind {
-    named,
-    unknown
-};
-
-class TypeToken {
-public:
-
-    TypeTokenKind kind;
-
-    TypeToken(TypeTokenKind kind): kind(kind) {}
-
-};
-
-class NamedTypeToken : public TypeToken {
-public:
-
-    std::string id;
-
-    NamedTypeToken(std::string id) : TypeToken(TypeTokenKind::named), id(std::move(id)) {}
-
-};
-
-class UnknownTypeToken : public TypeToken {
-public:
-
-    UnknownTypeToken(): TypeToken(TypeTokenKind::unknown)  {}
-
-};
-
-enum ExpressionKind {
-    assignment,
-    numberLiteral
-};
-
-class Expression {
-public:
-
-    ExpressionKind kind;
-    Location _loc;
-
-    Expression(ExpressionKind kind, Location _loc): kind(kind), _loc(std::move(_loc)) {
-
-    }
-
-    Location loc() {
-        return _loc;
-    }
-
-};
-
-class Assignment : public Expression {
-public:
-
-    std::string id;
-    std::unique_ptr<TypeToken> type;
-    std::unique_ptr<Expression> body;
-
-    Assignment(Location location, std::unique_ptr<TypeToken> type, std::string id, std::unique_ptr<Expression> body) :
-            Expression(ExpressionKind::assignment, std::move(location)),
-            type(std::move(type)),
-            id(std::move(id)),
-            body(std::move(body)) {
-
-    }
-
-};
-
-class NumberLiteral : public Expression {
-public:
-
-    double value;
-
-    NumberLiteral(Location location, double value) : Expression(ExpressionKind::numberLiteral, std::move(location)), value(value) {}
-
-};
 
 const std::string whiteSpace = " \n\t";
 const std::string singleTokens = ";";
-const std::string mergeTokens = ":=";
+const std::string mergeTokens = ":=+-*/";
 
 class Tokenizer {
 
@@ -232,6 +142,7 @@ private:
             }
         }
 
+        out.emplace_back(point(), "<EOF>", TokenType::Eof);
         return out;
     }
 };
@@ -242,6 +153,9 @@ std::vector<Token> parseFile(std::string _sourceFile) {
 
 
 class Lexer {
+
+    const std::set<std::string> sumOps = {"+", "-"};
+    const std::set<std::string> productOps = {"*", "/", "**"};
 
     std::vector<Token> tokens;
     int index = 0;
@@ -261,6 +175,10 @@ public:
 
     }
 
+    bool isDone()  {
+        return tokens[index].type == TokenType::Eof;
+    }
+
 private:
 
     Token next() {
@@ -276,6 +194,54 @@ private:
     }
 
     std::unique_ptr<Expression> readExpression() {
+        return readSum();
+    }
+
+    /**
+     * Looks for + or - operators
+     * @return
+     */
+    std::unique_ptr<Expression> readSum() {
+        auto left = readProduct();
+
+        auto maybeSymbol = peek();
+
+        if (sumOps.count(maybeSymbol.word) == 1) {
+            index++;
+
+            auto right = readProduct();
+
+            return std::make_unique<BinaryOp>(maybeSymbol.loc, std::make_unique<UnknownTypeToken>(), maybeSymbol.word, std::move(left), std::move(right));
+        } else {
+            return left;
+        }
+    }
+
+    /**
+     * Looks for * / or ** operators
+     * @return
+     */
+    std::unique_ptr<Expression> readProduct() {
+        auto left = readValue();
+
+        auto maybeSymbol = peek();
+
+        if (productOps.count(maybeSymbol.word) == 1) {
+            index++;
+
+            auto right = readValue();
+
+            return std::make_unique<BinaryOp>(maybeSymbol.loc, std::make_unique<UnknownTypeToken>(), maybeSymbol.word, std::move(left), std::move(right));
+        } else {
+            return left;
+        }
+    }
+
+    /**
+     * Looks for a literal or a variable.
+     * @return
+     */
+    std::unique_ptr<Expression> readValue() {
         auto first = next();
 
         if (first.type == TokenType::Number) {
@@ -298,7 +264,7 @@ private:
                 throw std::runtime_error(typeName.expected("type identifier"));
             }
 
-            std::unique_ptr<TypeToken> type = std::make_unique<NamedTypeToken>(maybeColon.word);
+            std::unique_ptr<TypeToken> type = std::make_unique<NamedTypeToken>(typeName.word);
             return type;
         } else {
             // Type must be implicit
@@ -330,7 +296,18 @@ private:
 };
 
 class JsonPrinter {
+
+    std::ofstream out;
+
 public:
+
+    JsonPrinter(const std::string &dest) {
+        out.open(dest);
+    }
+
+    void println(const std::string &message) {
+        out << message << std::endl;
+    }
 
     void print(Expression *expression) {
         ExpressionKind kind = expression->kind;
@@ -338,14 +315,23 @@ public:
         switch (kind) {
             case ExpressionKind::assignment: {
                 auto ex = (Assignment *) expression;
-                std::cout << "{id: '" << ex->id << "', type: '" << typeName(ex->type.get()) << "', body: ";
+                out << "{kind: 'assignment', id: '" << ex->id << "', type: '" << typeName(ex->type.get()) << "', body: ";
                 print(ex->body.get());
-                std::cout << "}";
+                out << "}";
+                break;
+            }
+            case ExpressionKind::binaryOp: {
+                auto ex = (BinaryOp *) expression;
+                out << "{kind: 'binaryOp', type: '" << typeName(ex->type.get()) << "', op: '" << ex->op << "', left: ";
+                print(ex->left.get());
+                out << ", right: ";
+                print(ex->right.get());
+                out << "}";
                 break;
             }
             case ExpressionKind::numberLiteral: {
                 auto ex = (NumberLiteral *) expression;
-                std::cout << ex->value;
+                out << ex->value;
                 break;
             }
             default:
@@ -371,10 +357,21 @@ public:
 };
 
 void lexAndPrint(std::vector<Token> tokens) {
-    auto ex = Lexer(std::move(tokens)).readStatement();
 
-    JsonPrinter().print(ex.get());
 
-    println("");
+    auto lexer = Lexer(std::move(tokens));
+
+    JsonPrinter printer("./build/ast.js");
+
+    printer.println("const ast = [");
+
+    while(!lexer.isDone()) {
+        auto ex = lexer.readStatement();
+
+        printer.print(ex.get());
+        printer.println(",");
+    }
+
+    printer.println("];");
     println("Parsed and lexed");
 }
