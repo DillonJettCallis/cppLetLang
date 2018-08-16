@@ -17,7 +17,7 @@ typedef std::istreambuf_iterator<char> CharStream;
 
 
 const std::string whiteSpace = " \n\t";
-const std::string singleTokens = ";";
+const std::string singleTokens = "(),";
 const std::string mergeTokens = ":=+-*/";
 
 class Tokenizer {
@@ -85,6 +85,8 @@ private:
                 return word;
             }
         }
+
+        return word;
     }
 
     std::string readMergedSymbol(CharStream& in, CharStream end) {
@@ -101,6 +103,8 @@ private:
                 return word;
             }
         }
+
+        return word;
     }
 
     std::string readNumber(CharStream& in, CharStream end) {
@@ -117,6 +121,8 @@ private:
                 return word;
             }
         }
+
+        return word;
     }
 
     std::vector<Token> readFile(CharStream start, CharStream end) {
@@ -169,6 +175,8 @@ public:
 
         if ("let" == firstWord.word) {
             return readAssignment(firstWord.loc);
+        } else if ("fun" == firstWord.word) {
+            return readFunction(firstWord.loc);
         }
 
         throw std::runtime_error(firstWord.expected("statement"));
@@ -293,6 +301,88 @@ private:
         return std::make_unique<Assignment>(loc, std::move(type), id.word, std::move(body));
     }
 
+    std::unique_ptr<Expression> readFunction(const Location &loc) {
+        auto id = next();
+
+        if (id.type != TokenType::Identifier) {
+            throw std::runtime_error(id.expected("identifier"));
+        }
+
+        //TODO: Handle generics later
+        auto openParen = next();
+
+        if (openParen.word != "(") {
+            throw std::runtime_error(openParen.expected("("));
+        }
+
+        std::vector<std::string> paramNames;
+        std::vector<std::unique_ptr<TypeToken>> paramTypes;
+
+        while (peek().word != ")") {
+            auto paramId = next();
+
+            if (paramId.type != TokenType::Identifier) {
+                throw std::runtime_error(paramId.expected("identifier"));
+            }
+
+            auto colon = next();
+
+            if (colon.word != ":") {
+                throw std::runtime_error(colon.expected(":"));
+            }
+
+            auto paramType = next();
+
+            if (paramType.type != TokenType::Identifier) {
+                throw std::runtime_error(paramType.expected("type"));
+            }
+
+            paramNames.push_back(paramId.word);
+            std::unique_ptr<TypeToken> type = std::make_unique<NamedTypeToken>(paramType.word);
+            paramTypes.push_back(std::move(type));
+
+            auto maybeComma = peek();
+
+            if (maybeComma.word == ",") {
+                index++;
+            }
+        }
+
+        index++;
+
+        auto colon = next();
+
+        if (colon.word != ":") {
+            throw std::runtime_error(colon.expected(":"));
+        }
+
+        auto resultType = next();
+
+        if (resultType.type != TokenType::Identifier) {
+            throw std::runtime_error(resultType.expected("type"));
+        }
+
+        auto resultToken = std::make_unique<NamedTypeToken>(resultType.word);
+
+        std::unique_ptr<TypeToken> functionType = std::make_unique<BasicFunctionTypeToken>(std::move(paramTypes), std::move(resultToken));
+
+        auto openBlock = next();
+
+        if (openBlock.word != "{") {
+            throw std::runtime_error(openBlock.expected("{"));
+        }
+
+        std::vector<std::unique_ptr<Expression>> body;
+
+        while (peek().word != "}") {
+            body.emplace_back(readExpression());
+        }
+
+        index++;
+
+        return std::make_unique<Function>(loc, std::move(id.word), std::move(paramNames), std::move(functionType), std::move(body));
+    }
+
 };
 
 class JsonPrinter {
@@ -315,14 +405,36 @@ public:
         switch (kind) {
             case ExpressionKind::assignment: {
                 auto ex = (Assignment *) expression;
-                out << "{kind: 'assignment', id: '" << ex->id << "', type: '" << typeName(ex->type.get()) << "', body: ";
+                out << "{kind: 'assignment', id: '" << ex->id << "', type: " << typeName(ex->type.get()) << ", body: ";
                 print(ex->body.get());
                 out << "}";
                 break;
             }
+            case ExpressionKind::function: {
+                auto ex = (Function *) expression;
+                out << "{kind: 'function', id: '" << ex->id << "', type: " << typeName(ex->type.get()) << ", params: [";
+
+                auto params = ex->params;
+
+                out << params[0];
+                for (int i = 1; i < params.size(); i++) {
+                    out << ", " << params[i];
+                }
+
+                out << "], body: [";
+                std::vector<std::unique_ptr<Expression>>& body = ex->body;
+
+                print(body[0].get());
+                for (int i = 1; i < body.size(); i++) {
+                    out << ", ";
+                    print(body[i].get());
+                }
+                out << "]}";
+                break;
+            }
             case ExpressionKind::binaryOp: {
                 auto ex = (BinaryOp *) expression;
-                out << "{kind: 'binaryOp', type: '" << typeName(ex->type.get()) << "', op: '" << ex->op << "', left: ";
+                out << "{kind: 'binaryOp', type: " << typeName(ex->type.get()) << ", op: '" << ex->op << "', left: ";
                 print(ex->left.get());
                 out << ", right: ";
                 print(ex->right.get());
@@ -345,10 +457,29 @@ public:
         switch (kind) {
             case TypeTokenKind::named: {
                 auto token = (NamedTypeToken *) typeToken;
-                return token->id;
+                return "'" + token->id + "'";
+            }
+            case TypeTokenKind::basicFunction: {
+                auto token = (BasicFunctionTypeToken *) typeToken;
+
+                std::string result = "{params: [";
+
+                std::vector<std::unique_ptr<TypeToken>>& params = token->params;
+
+                result += typeName(params[0].get());
+                for (int i = 1; i < params.size(); i++) {
+                    result += ", ";
+                    result += typeName(params[i].get());
+                }
+
+                result += "], result: ";
+                result += typeName(token->result.get());
+                result += "}";
+
+                return result;
             }
             case TypeTokenKind::unknown:
-                return "<unknown>";
+                return "'<unknown>'";
             default:
                 throw std::runtime_error("Unknown TypeToken type");
         }

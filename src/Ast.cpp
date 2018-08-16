@@ -23,6 +23,15 @@ Assignment::Assignment(Location location, std::unique_ptr<TypeToken> type, std::
 
 }
 
+Function::Function(Location location, std::string id, std::vector<std::string> params, std::unique_ptr<TypeToken> type, std::vector<std::unique_ptr<Expression>> body) :
+        Expression(ExpressionKind::function, std::move(location)),
+        id(std::move(id)),
+        params(std::move(params)),
+        type(std::move(type)),
+        body(std::move(body)) {
+
+}
+
 BinaryOp::BinaryOp(Location location, std::unique_ptr<TypeToken> type, std::string op, std::unique_ptr<Expression> left, std::unique_ptr<Expression> right) :
         Expression(ExpressionKind::binaryOp, std::move(location)),
         type(std::move(type)),
@@ -33,3 +42,5 @@ BinaryOp::BinaryOp(Location location, std::unique_ptr<TypeToken> type, std::stri
 }
 
 NumberLiteral::NumberLiteral(Location location, double value) : Expression(ExpressionKind::numberLiteral, std::move(location)), value(value) {}
+
+Module::Module(std::vector<std::unique_ptr<Function>> functions) : functions(std::move(functions)) {}
