@@ -7,7 +7,6 @@
 #include <memory>
 #include <utility>
 #include <fstream>
-#include <fstream>
 #include <set>
 #include "Utils.h"
 #include "Tokens.h"
@@ -17,7 +16,7 @@ typedef std::istreambuf_iterator<char> CharStream;
 
 
 const std::string whiteSpace = " \n\t";
-const std::string singleTokens = "(),";
+const std::string singleTokens = "(){},";
 const std::string mergeTokens = ":=+-*/";
 
 class Tokenizer {
@@ -25,8 +24,8 @@ class Tokenizer {
 private:
 
     std::string sourceFile;
-    int x = 0;
-    int y = 0;
+    int x = 1;
+    int y = 1;
 
 public:
     explicit Tokenizer(std::string _sourceFile) {
@@ -145,6 +144,8 @@ private:
                 out.emplace_back(point(), word, TokenType::Symbol);
             } else if (mergeTokens.find(next) != std::string::npos) {
                 out.emplace_back(point(), readMergedSymbol(in, end), TokenType::Symbol);
+            } else {
+                throw std::runtime_error("Illegal symbol: " + std::string(1, next));
             }
         }
 
@@ -375,7 +376,7 @@ private:
         std::vector<std::unique_ptr<Expression>> body;
 
         while (peek().word != "}") {
-            body.emplace_back(readExpression());
+            body.emplace_back(readStatement());
         }
 
         index++;
@@ -416,18 +417,22 @@ public:
 
                 auto params = ex->params;
 
-                out << params[0];
-                for (int i = 1; i < params.size(); i++) {
-                    out << ", " << params[i];
+                if (!params.empty()) {
+                    out << params[0];
+                    for (int i = 1; i < params.size(); i++) {
+                        out << ", " << params[i];
+                    }
                 }
 
                 out << "], body: [";
                 std::vector<std::unique_ptr<Expression>>& body = ex->body;
 
-                print(body[0].get());
-                for (int i = 1; i < body.size(); i++) {
-                    out << ", ";
-                    print(body[i].get());
+                if (!body.empty()) {
+                    print(body[0].get());
+                    for (int i = 1; i < body.size(); i++) {
+                        out << ", ";
+                        print(body[i].get());
+                    }
                 }
                 out << "]}";
                 break;
@@ -466,10 +471,12 @@ public:
 
                 std::vector<std::unique_ptr<TypeToken>>& params = token->params;
 
-                result += typeName(params[0].get());
-                for (int i = 1; i < params.size(); i++) {
-                    result += ", ";
-                    result += typeName(params[i].get());
+                if (!params.empty()) {
+                    result += typeName(params[0].get());
+                    for (int i = 1; i < params.size(); i++) {
+                        result += ", ";
+                        result += typeName(params[i].get());
+                    }
                 }
 
                 result += "], result: ";
@@ -487,12 +494,18 @@ public:
 
 };
 
+std::unique_ptr<Expression> lex(std::vector<Token> tokens) {
+    auto lexer = Lexer(std::move(tokens));
+
+    return std::move(lexer.readStatement());
+}
+
 void lexAndPrint(std::vector<Token> tokens) {
 
 
     auto lexer = Lexer(std::move(tokens));
 
-    JsonPrinter printer("./build/ast.js");
+    JsonPrinter printer("/home/dillon/projects/cppLetLang/build/ast.js");
 
     printer.println("const ast = [");
 

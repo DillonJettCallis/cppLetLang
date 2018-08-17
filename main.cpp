@@ -1,14 +1,20 @@
 #include "src/Utils.h"
 #include "src/Parser.h"
-
+#include "src/Compiler.h"
 
 int main() {
-    println("Hello, World!");
+    println("Starting parse");
 
     try {
-        auto tokens = parseFile(R"(C:\Users\Dillon\Projects\typedLetLang\test\basic.let)");
+        auto tokens = parseFile("/home/dillon/projects/cppLetLang/test/basic.let");
 
-        lexAndPrint(tokens);
+        println("Parsed, doing lex");
+
+        auto ast = lex(tokens);
+
+        println("Done lex, doing compile");
+
+        compile("/home/dillon/projects/cppLetLang/build/basic.ll", ast.get());
 
         return 0;
 

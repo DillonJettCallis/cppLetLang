@@ -7,9 +7,12 @@
 
 #include <vector>
 #include "Tokens.h"
+#include "Ast.h"
 
 
 std::vector<Token> parseFile(std::string _sourceFile);
+
+std::unique_ptr<Expression> lex(std::vector<Token> tokens);
 
 void lexAndPrint(std::vector<Token> tokens);
 

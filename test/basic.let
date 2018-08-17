@@ -1,6 +1,6 @@
 
 fun main (): Unit {
-    let x: Int = 4 + 2 * 7
+    let x: Float = 4 + 2 * 7
 
-    let y: Int = 4 * 2 + 7
+    let y: Float = 4 * 2 + 7
 }
