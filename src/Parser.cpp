@@ -231,14 +231,14 @@ private:
      * @return
      */
     std::unique_ptr<Expression> readProduct() {
-        auto left = readValue();
+        auto left = readTerm();
 
         auto maybeSymbol = peek();
 
         if (productOps.count(maybeSymbol.word) == 1) {
             index++;
 
-            auto right = readValue();
+            auto right = readTerm();
 
             return std::make_unique<BinaryOp>(maybeSymbol.loc, std::make_unique<UnknownTypeToken>(), maybeSymbol.word, std::move(left), std::move(right));
         } else {
@@ -250,12 +250,14 @@ private:
      * Looks for a literal or a variable.
      * @return
      */
-    std::unique_ptr<Expression> readValue() {
+    std::unique_ptr<Expression> readTerm() {
         auto first = next();
 
         if (first.type == TokenType::Number) {
             double value = std::stod(first.word);
             return std::make_unique<NumberLiteral>(first.loc, value);
+        } else if (first.type == TokenType::Identifier) {
+            return std::make_unique<Variable>(first.loc, first.word, std::make_unique<UnknownTypeToken>());
         }
 
         throw std::runtime_error(first.expected("expression"));

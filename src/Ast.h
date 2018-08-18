@@ -14,6 +14,7 @@ enum ExpressionKind {
     assignment,
     function,
     binaryOp,
+    variable,
     numberLiteral
 };
 
@@ -25,7 +26,7 @@ public:
 
     Expression(ExpressionKind kind, Location _loc);
 
-    Location loc();
+    Location& loc();
 
 };
 
@@ -64,6 +65,16 @@ public:
 
 };
 
+class Variable : public Expression {
+public:
+
+    std::string id;
+    std::unique_ptr<TypeToken> type;
+
+    Variable(Location location, std::string id, std::unique_ptr<TypeToken> type);
+
+};
+
 class NumberLiteral : public Expression {
 public:
 
@@ -78,7 +89,7 @@ public:
 
     std::vector<std::unique_ptr<Function>> functions;
 
-    Module(std::vector<std::unique_ptr<Function>> functions);
+    explicit Module(std::vector<std::unique_ptr<Function>> functions);
 
 };
 

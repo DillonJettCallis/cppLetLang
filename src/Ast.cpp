@@ -11,7 +11,7 @@ Expression::Expression(ExpressionKind kind, Location _loc): kind(kind), _loc(std
 
 }
 
-Location Expression::loc() {
+Location& Expression::loc() {
     return _loc;
 }
 
@@ -38,6 +38,13 @@ BinaryOp::BinaryOp(Location location, std::unique_ptr<TypeToken> type, std::stri
         op(std::move(op)),
         left(std::move(left)),
         right(std::move(right)) {
+
+}
+
+Variable::Variable(Location location, std::string id, std::unique_ptr<TypeToken> type) :
+    Expression(ExpressionKind::variable, std::move(location)),
+    id(std::move(id)),
+    type(std::move(type)) {
 
 }
 

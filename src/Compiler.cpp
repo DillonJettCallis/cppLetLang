@@ -35,6 +35,8 @@ class Compiler {
     llvm::Module mod;
     llvm::IRBuilder<> builder;
 
+    std::map<std::string, llvm::AllocaInst*> context;
+
 public:
     Compiler() : mod(llvm::Module("main", con)), builder(con) {
 
@@ -46,7 +48,10 @@ public:
         switch (kind) {
             case ExpressionKind::assignment: {
                 auto ex = (Assignment *) expression;
-                return builder.CreateAlloca(llvm::Type::getDoubleTy(con), 0, compile(ex->body.get()));
+                auto created = builder.CreateAlloca(llvm::Type::getDoubleTy(con), nullptr, ex->id);
+                builder.CreateStore(compile(ex->body.get()), created);
+                context[ex->id] = created;
+                return builder.CreateLoad(created);
             }
             case ExpressionKind::function: {
                 auto ex = (Function *) expression;
@@ -77,12 +82,30 @@ public:
                         result = compile(next.get());
                     }
 
-                    builder.CreateRet(result);
+                    // TODO: Handle return values.
+//                    builder.CreateRet(result);
+                    builder.CreateRetVoid();
                 }
 
-                llvm::verifyFunction(*func);
+                std::string errorMessage;
+                llvm::raw_string_ostream errorStream(errorMessage);
+                auto hasErrors = llvm::verifyFunction(*func, &errorStream);
+
+                if (hasErrors) {
+                    throw std::runtime_error("Generated invalid function: " + errorMessage);
+                }
 
                 return func;
+            }
+            case ExpressionKind::variable: {
+                auto ex = (Variable*) expression;
+                auto var = context[ex->id];
+
+                if (var == nullptr) {
+                    throw std::runtime_error("Variable " + ex->id + " is not declared at " + ex->loc().pretty());
+                }
+
+                return builder.CreateLoad(var, ex->id);
             }
             case ExpressionKind::binaryOp: {
                 auto ex = (BinaryOp *) expression;
