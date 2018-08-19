@@ -7,6 +7,6 @@
 
 #include "Ast.h"
 
-void compile(std::string dest, Expression *expression);
+void compile(const std::string &dest, Module *mod);
 
 #endif //TYPEDLETLANG_COMPILER_H

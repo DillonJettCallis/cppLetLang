@@ -11,7 +11,13 @@
 enum TypeTokenKind {
     named,
     basicFunction,
+    base,
     unknown
+};
+
+enum BasicTypeTokenKind {
+    Float,
+    Unit
 };
 
 class TypeToken {
@@ -19,7 +25,15 @@ public:
 
     TypeTokenKind kind;
 
-    TypeToken(TypeTokenKind kind);
+    explicit TypeToken(TypeTokenKind kind);
+
+    virtual bool operator==(TypeToken& other) = 0;
+
+    virtual bool operator!=(TypeToken& other);
+
+    virtual std::unique_ptr<TypeToken> clone() = 0;
+
+    virtual std::string pretty() = 0;
 
 };
 
@@ -29,6 +43,12 @@ public:
     std::string id;
 
     NamedTypeToken(std::string id);
+
+    bool operator==(TypeToken& other) override;
+
+     std::unique_ptr<TypeToken> clone() override;
+
+    std::string pretty() override;
 
 };
 
@@ -40,12 +60,39 @@ public:
 
     BasicFunctionTypeToken(std::vector<std::unique_ptr<TypeToken>> params, std::unique_ptr<TypeToken> result);
 
+    bool operator==(TypeToken& other) override;
+
+    std::unique_ptr<TypeToken> clone() override;
+
+    std::string pretty() override;
+
+};
+
+class BaseTypeToken : public TypeToken {
+public:
+
+    BasicTypeTokenKind base;
+
+    explicit BaseTypeToken(BasicTypeTokenKind base);
+
+    bool operator==(TypeToken& other) override;
+
+    std::unique_ptr<TypeToken> clone() override;
+
+    std::string pretty() override;
+
 };
 
 class UnknownTypeToken : public TypeToken {
 public:
 
     UnknownTypeToken();
+
+    bool operator==(TypeToken& other) override;
+
+    std::unique_ptr<TypeToken> clone() override;
+
+    std::string pretty() override;
 
 };
 

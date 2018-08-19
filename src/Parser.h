@@ -12,7 +12,7 @@
 
 std::vector<Token> parseFile(std::string _sourceFile);
 
-std::unique_ptr<Expression> lex(std::vector<Token> tokens);
+std::unique_ptr<Module> lex(std::vector<Token> tokens);
 
 void lexAndPrint(std::vector<Token> tokens);
 

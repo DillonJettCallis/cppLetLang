@@ -11,6 +11,7 @@
 #include "Utils.h"
 #include "Tokens.h"
 #include "Ast.h"
+#include "Types.h"
 
 using namespace std;
 
@@ -49,11 +50,11 @@ public:
 
 private:
 
-    Location point () {
+    Location point() {
         return {sourceFile, x, y};
     }
 
-    void eatWhitespace(CharStream& in, CharStream end) {
+    void eatWhitespace(CharStream &in, CharStream end) {
         while (in != end) {
             char next = *in;
 
@@ -72,7 +73,7 @@ private:
         }
     }
 
-    string readWord(CharStream& in, CharStream end) {
+    string readWord(CharStream &in, CharStream end) {
         string word;
 
         while (in != end) {
@@ -90,7 +91,7 @@ private:
         return word;
     }
 
-    string readMergedSymbol(CharStream& in, CharStream end) {
+    string readMergedSymbol(CharStream &in, CharStream end) {
         string word;
 
         while (in != end) {
@@ -108,7 +109,7 @@ private:
         return word;
     }
 
-    string readNumber(CharStream& in, CharStream end) {
+    string readNumber(CharStream &in, CharStream end) {
         string word;
 
         while (in != end) {
@@ -169,26 +170,29 @@ class Lexer {
     vector<Token> tokens;
     int index = 0;
 public:
-    explicit Lexer(vector<Token> tokens): tokens(move(tokens)) {
+    explicit Lexer(vector<Token> tokens) : tokens(move(tokens)) {
 
     }
 
-    unique_ptr<Expression> readStatement() {
-        auto firstWord = peek();
-
-        if ("let" == firstWord.word) {
-            skip();
-            return readAssignment(firstWord.loc);
-        } else if ("fun" == firstWord.word) {
-            skip();
-            return readFunction(firstWord.loc);
-        } else {
-            return readExpression();
-        }
-    }
-
-    bool isDone()  {
+    bool isDone() {
         return tokens[index].type == TokenType::Eof;
+    }
+
+    unique_ptr<Module> readModule() {
+        vector<unique_ptr<Function>> functions;
+
+        do {
+            auto firstWord = peek();
+
+            if ("fun" == firstWord.word) {
+                skip();
+                functions.push_back(readFunction(firstWord.loc));
+            } else {
+                throw runtime_error(firstWord.expected("function"));
+            }
+        } while (!isDone());
+
+        return make_unique<Module>(move(functions));
     }
 
 private:
@@ -209,31 +213,45 @@ private:
         index++;
     }
 
+    unique_ptr<Expression> readStatement() {
+        auto firstWord = peek();
+
+        if ("let" == firstWord.word) {
+            skip();
+            return readAssignment(firstWord.loc);
+        } else if ("fun" == firstWord.word) {
+            skip();
+            return readFunction(firstWord.loc);
+        } else {
+            return readExpression();
+        }
+    }
+
     unique_ptr<Expression> readExpression() {
         return readCall();
     }
-    
+
     unique_ptr<Expression> readCall() {
         auto left = readSum();
 
         auto maybeParen = peek();
 
         if (maybeParen.word == "(") {
-            index++;
+            skip();
 
             vector<unique_ptr<Expression>> args;
 
-            while(peek().word != ")") {
+            while (peek().word != ")") {
                 args.push_back(readExpression());
 
                 if (peek().word == ",") {
-                    index++;
+                    skip();
                 }
             }
 
-            index++;
+            skip();
 
-            return make_unique<Call>(left->loc(), move(left), move(args));
+            return make_unique<Call>(left->loc(), move(make_unique<UnknownTypeToken>()), move(left), move(args));
         } else {
             return left;
         }
@@ -249,11 +267,12 @@ private:
         auto maybeSymbol = peek();
 
         if (sumOps.count(maybeSymbol.word) == 1) {
-            index++;
+            skip();
 
             auto right = readProduct();
 
-            return make_unique<BinaryOp>(maybeSymbol.loc, make_unique<UnknownTypeToken>(), maybeSymbol.word, move(left), move(right));
+            return make_unique<BinaryOp>(maybeSymbol.loc, make_unique<UnknownTypeToken>(), maybeSymbol.word, move(left),
+                                         move(right));
         } else {
             return left;
         }
@@ -269,11 +288,12 @@ private:
         auto maybeSymbol = peek();
 
         if (productOps.count(maybeSymbol.word) == 1) {
-            index++;
+            skip();
 
             auto right = readTerm();
 
-            return make_unique<BinaryOp>(maybeSymbol.loc, make_unique<UnknownTypeToken>(), maybeSymbol.word, move(left), move(right));
+            return make_unique<BinaryOp>(maybeSymbol.loc, make_unique<UnknownTypeToken>(), maybeSymbol.word, move(left),
+                                         move(right));
         } else {
             return left;
         }
@@ -301,7 +321,7 @@ private:
 
         if (maybeColon.word == ":") {
             // We have an explicit type.
-            index++;
+            skip();
             auto typeName = next();
 
             if (typeName.type != TokenType::Identifier) {
@@ -337,7 +357,7 @@ private:
         return make_unique<Assignment>(loc, move(type), id.word, move(body));
     }
 
-    unique_ptr<Expression> readFunction(const Location &loc) {
+    unique_ptr<Function> readFunction(const Location &loc) {
         auto id = next();
 
         if (id.type != TokenType::Identifier) {
@@ -380,11 +400,11 @@ private:
             auto maybeComma = peek();
 
             if (maybeComma.word == ",") {
-                index++;
+                skip();
             }
         }
 
-        index++;
+        skip();
 
         auto colon = next();
 
@@ -414,7 +434,7 @@ private:
             body.emplace_back(readStatement());
         }
 
-        index++;
+        skip();
 
         return make_unique<Function>(loc, move(id.word), move(paramNames), move(functionType), move(body));
     }
@@ -427,7 +447,7 @@ class JsonPrinter {
 
 public:
 
-    JsonPrinter(const string &dest) {
+    explicit JsonPrinter(const string &dest) {
         out.open(dest);
     }
 
@@ -441,14 +461,14 @@ public:
         switch (kind) {
             case ExpressionKind::assignment: {
                 auto ex = (Assignment *) expression;
-                out << "{kind: 'assignment', id: '" << ex->id << "', type: " << typeName(ex->type.get()) << ", body: ";
+                out << "{kind: 'assignment', id: '" << ex->id << "', type: " << typeName(ex->type()) << ", body: ";
                 print(ex->body.get());
                 out << "}";
                 break;
             }
             case ExpressionKind::function: {
                 auto ex = (Function *) expression;
-                out << "{kind: 'function', id: '" << ex->id << "', type: " << typeName(ex->type.get()) << ", params: [";
+                out << "{kind: 'function', id: '" << ex->id << "', type: " << typeName(ex->type()) << ", params: [";
 
                 auto params = ex->params;
 
@@ -460,7 +480,7 @@ public:
                 }
 
                 out << "], body: [";
-                vector<unique_ptr<Expression>>& body = ex->body;
+                vector<unique_ptr<Expression>> &body = ex->body;
 
                 if (!body.empty()) {
                     print(body[0].get());
@@ -474,7 +494,7 @@ public:
             }
             case ExpressionKind::binaryOp: {
                 auto ex = (BinaryOp *) expression;
-                out << "{kind: 'binaryOp', type: " << typeName(ex->type.get()) << ", op: '" << ex->op << "', left: ";
+                out << "{kind: 'binaryOp', type: " << typeName(ex->type()) << ", op: '" << ex->op << "', left: ";
                 print(ex->left.get());
                 out << ", right: ";
                 print(ex->right.get());
@@ -491,31 +511,31 @@ public:
         }
     }
 
-    string typeName(TypeToken* typeToken) {
-        TypeTokenKind kind = typeToken->kind;
+    string typeName(TypeToken &typeToken) {
+        TypeTokenKind kind = typeToken.kind;
 
         switch (kind) {
             case TypeTokenKind::named: {
-                auto token = (NamedTypeToken *) typeToken;
-                return "'" + token->id + "'";
+                auto token = (NamedTypeToken &) typeToken;
+                return "'" + token.id + "'";
             }
             case TypeTokenKind::basicFunction: {
-                auto token = (BasicFunctionTypeToken *) typeToken;
+                auto &token = (BasicFunctionTypeToken&) typeToken;
 
                 string result = "{params: [";
 
-                vector<unique_ptr<TypeToken>>& params = token->params;
+                vector<unique_ptr<TypeToken>> &params = token.params;
 
                 if (!params.empty()) {
-                    result += typeName(params[0].get());
+                    result += typeName(*params[0].get());
                     for (int i = 1; i < params.size(); i++) {
                         result += ", ";
-                        result += typeName(params[i].get());
+                        result += typeName(*params[i].get());
                     }
                 }
 
                 result += "], result: ";
-                result += typeName(token->result.get());
+                result += typeName(*token.result);
                 result += "}";
 
                 return result;
@@ -529,14 +549,13 @@ public:
 
 };
 
-unique_ptr<Expression> lex(vector<Token> tokens) {
+unique_ptr<Module> lex(vector<Token> tokens) {
     auto lexer = Lexer(move(tokens));
 
-    return move(lexer.readStatement());
+    return lexer.readModule();
 }
 
 void lexAndPrint(vector<Token> tokens) {
-
 
     auto lexer = Lexer(move(tokens));
 
@@ -544,9 +563,9 @@ void lexAndPrint(vector<Token> tokens) {
 
     printer.println("const ast = [");
 
-    while(!lexer.isDone()) {
-        auto ex = lexer.readStatement();
+    auto module = lexer.readModule();
 
+    for (auto &ex : module->functions) {
         printer.print(ex.get());
         printer.println(",");
     }

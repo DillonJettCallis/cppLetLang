@@ -1,5 +1,6 @@
 #include "src/Utils.h"
 #include "src/Parser.h"
+#include "src/Typechecker.h"
 #include "src/Compiler.h"
 
 int main() {
@@ -12,9 +13,15 @@ int main() {
 
         auto ast = lex(tokens);
 
-        println("Done lex, doing compile");
+        println("Done lex, doing typecheck");
+
+        typeCheck(*ast);
+
+        println("Done typecheck, doing compile");
 
         compile("/home/dillon/projects/cppLetLang/build/basic.ll", ast.get());
+
+        println("Done compile");
 
         return 0;
 

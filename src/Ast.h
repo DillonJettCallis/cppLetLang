@@ -20,14 +20,18 @@ enum ExpressionKind {
 };
 
 class Expression {
+
+    Location _loc;
+
 public:
 
     ExpressionKind kind;
-    Location _loc;
+    std::unique_ptr<TypeToken> _type;
 
-    Expression(ExpressionKind kind, Location _loc);
+    Expression(ExpressionKind kind, Location _loc, std::unique_ptr<TypeToken> _type);
 
     Location& loc();
+    TypeToken& type();
 
 };
 
@@ -35,7 +39,6 @@ class Assignment : public Expression {
 public:
 
     std::string id;
-    std::unique_ptr<TypeToken> type;
     std::unique_ptr<Expression> body;
 
     Assignment(Location location, std::unique_ptr<TypeToken> type, std::string id, std::unique_ptr<Expression> body);
@@ -47,7 +50,6 @@ public:
 
     std::string id;
     std::vector<std::string> params;
-    std::unique_ptr<TypeToken> type;
     std::vector<std::unique_ptr<Expression>> body;
 
     Function(Location location, std::string id, std::vector<std::string> params, std::unique_ptr<TypeToken> type, std::vector<std::unique_ptr<Expression>> body);
@@ -60,14 +62,13 @@ public:
     std::unique_ptr<Expression> source;
     std::vector<std::unique_ptr<Expression>> args;
 
-    Call(Location location, std::unique_ptr<Expression> source, std::vector<std::unique_ptr<Expression>> args);
+    Call(Location location, std::unique_ptr<TypeToken> type, std::unique_ptr<Expression> source, std::vector<std::unique_ptr<Expression>> args);
 
 };
 
 class BinaryOp : public Expression {
 public:
 
-    std::unique_ptr<TypeToken> type;
     std::string op;
     std::unique_ptr<Expression> left;
     std::unique_ptr<Expression> right;
@@ -80,7 +81,6 @@ class Variable : public Expression {
 public:
 
     std::string id;
-    std::unique_ptr<TypeToken> type;
 
     Variable(Location location, std::string id, std::unique_ptr<TypeToken> type);
 

@@ -3,31 +3,22 @@
 //
 
 #include "Compiler.h"
-#include "Ast.h"
 #include <fstream>
-#include <memory>
 #include "llvm/ADT/APFloat.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
-#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/Type.h"
 #include "llvm/IR/Verifier.h"
 
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Host.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetOptions.h"
 
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/raw_os_ostream.h"
+
+using namespace std;
 
 class Compiler {
 
@@ -35,76 +26,67 @@ class Compiler {
     llvm::Module mod;
     llvm::IRBuilder<> builder;
 
-    std::map<std::string, llvm::AllocaInst*> context;
+    vector<map<string, llvm::Value *>> contextStack;
 
 public:
     Compiler() : mod(llvm::Module("main", con)), builder(con) {
 
     }
 
-    llvm::Value* compile(Expression *expression) {
+    void compileModule(Module* ex) {
+        setupLibrary();
+
+        map<string, llvm::Value*> context;
+
+        for (auto &fun : ex->functions) {
+            context[fun->id] = getOrCreateFunction(fun.get());
+        }
+
+        contextStack.push_back(move(context));
+
+        for (auto &fun : ex->functions) {
+            compileFunction(fun.get());
+        }
+
+        std::string errorMessage;
+        llvm::raw_string_ostream errorStream(errorMessage);
+        auto hasErrors = llvm::verifyModule(mod, &errorStream);
+
+        if (hasErrors) {
+            throw std::runtime_error("Generated invalid module: " + errorMessage);
+        }
+    }
+
+    void output(const std::string &fileName) {
+        std::ofstream innerOut(fileName);
+        llvm::raw_os_ostream outStream(innerOut);
+        mod.print(outStream, nullptr);
+    }
+
+private:
+    llvm::Value *compile(Expression *expression) {
         ExpressionKind kind = expression->kind;
 
         switch (kind) {
             case ExpressionKind::assignment: {
                 auto ex = (Assignment *) expression;
-                auto created = builder.CreateAlloca(llvm::Type::getDoubleTy(con), nullptr, ex->id);
-                builder.CreateStore(compile(ex->body.get()), created);
-                context[ex->id] = created;
-                return builder.CreateLoad(created);
+                auto value = compile(ex->body.get());
+                contextStack.back()[ex->id] = value;
+                return value;
             }
             case ExpressionKind::function: {
                 auto ex = (Function *) expression;
 
-                // TODO: Gen real arg types.
-                std::vector<llvm::Type*> argTypes;
-
-                // TODO: Get actual result type.
-                llvm::FunctionType* functionType = llvm::FunctionType::get(llvm::Type::getVoidTy(con), argTypes, false);
-
-                llvm::Function* func = llvm::Function::Create(functionType, llvm::Function::ExternalLinkage, ex->id, &mod);
-
-                // TODO: Name arguments in function. Not required, but makes debugging IR easier.
-
-                llvm::BasicBlock* body = llvm::BasicBlock::Create(con, "body", func);
-                builder.SetInsertPoint(body);
-
-                // TODO: Collect params from function
-
-                auto rawBody = &ex->body;
-
-                if (rawBody->empty()) {
-                    builder.CreateRetVoid();
-                } else {
-                    llvm::Value *result = nullptr;
-
-                    for (auto &next : *rawBody) {
-                        result = compile(next.get());
-                    }
-
-                    // TODO: Handle return values.
-//                    builder.CreateRet(result);
-                    builder.CreateRetVoid();
-                }
-
-                std::string errorMessage;
-                llvm::raw_string_ostream errorStream(errorMessage);
-                auto hasErrors = llvm::verifyFunction(*func, &errorStream);
-
-                if (hasErrors) {
-                    throw std::runtime_error("Generated invalid function: " + errorMessage);
-                }
-
-                return func;
+                return compileFunction(ex);
             }
             case ExpressionKind::call: {
-                auto ex = (Call*) expression;
+                auto ex = (Call *) expression;
 
                 auto func = compile(ex->source.get());
 
                 auto rawArgs = &ex->args;
 
-                llvm::Value* args[rawArgs->size()];
+                llvm::Value *args[rawArgs->size()];
 
                 for (int i = 0; i < rawArgs->size(); i++) {
                     args[i] = compile((*rawArgs)[i].get());
@@ -113,41 +95,19 @@ public:
                 return builder.CreateCall(func, *args);
             }
             case ExpressionKind::variable: {
-                auto ex = (Variable*) expression;
-                auto var = context[ex->id];
+                auto ex = (Variable *) expression;
+                auto var = lookupValue(ex->id);
 
                 if (var == nullptr) {
-                    auto fun = lookUpLibFunction(ex->id);
-
-                    if (fun == nullptr) {
-                        throw std::runtime_error("Variable " + ex->id + " is not declared at " + ex->loc().pretty());
-                    } else {
-                        return fun;
-                    }
+                    throw std::runtime_error("Variable " + ex->id + " is not declared at " + ex->loc().pretty());
                 }
 
-                return builder.CreateLoad(var, ex->id);
+                return var;
             }
             case ExpressionKind::binaryOp: {
                 auto ex = (BinaryOp *) expression;
 
-                auto left = compile(ex->left.get());
-                auto right = compile(ex->right.get());
-
-                auto op = ex->op;
-
-                // TODO: Handle types besides Float
-                if (op == "+") {
-                    return builder.CreateFAdd(left, right, "addTemp");
-                } else if (op == "-") {
-                    return builder.CreateFSub(left, right, "subTemp");
-                } else if (op == "*") {
-                    return builder.CreateFMul(left, right, "mulTemp");
-                } else if (op == "/") {
-                    return builder.CreateFDiv(left, right, "divTemp");
-                } else {
-                    throw std::runtime_error("Unknown binary operator: " + op + " at " + ex->loc().pretty());
-                }
+                return compileBinaryOp(ex);
             }
             case ExpressionKind::numberLiteral: {
                 auto ex = (NumberLiteral *) expression;
@@ -158,29 +118,149 @@ public:
         }
     }
 
-    void output(const std::string &fileName) {
-        std::ofstream innerOut(fileName);
-        llvm::raw_os_ostream outStream(innerOut);
-        mod.print(outStream, nullptr);
+    llvm::Function* getOrCreateFunction(Function* ex) {
+        auto lookedUp = lookupValue(ex->id);
 
+        if (lookedUp == nullptr) {
+            auto *functionType = mapTypes((BasicFunctionTypeToken &) ex->type());
+
+            return llvm::Function::Create(functionType, llvm::Function::ExternalLinkage, ex->id, &mod);
+        } else {
+            return (llvm::Function*) lookedUp;
+        }
     }
 
-    llvm::Function* lookUpLibFunction(const std::string &id) {
-        if (id == "printd") {
-            llvm::ArrayRef<llvm::Type*> args = { llvm::Type::getDoubleTy(con) };
+    llvm::Function* compileFunction(Function* ex) {
+        auto *func = getOrCreateFunction(ex);
 
-            mod.getOrInsertFunction("printd", llvm::FunctionType::get(llvm::Type::getVoidTy(con), args, false));
-            return mod.getFunction("printd");
+        auto *body = llvm::BasicBlock::Create(con, "body", func);
+        auto initStartPoint = builder.GetInsertBlock();
+        builder.SetInsertPoint(body);
+
+        auto rawBody = &ex->body;
+
+        // Weird special case for an empty function.
+        if (rawBody->empty()) {
+            builder.CreateRetVoid();
         } else {
-            return nullptr;
+            map<string, llvm::Value*> context;
+
+            {
+                int i = 0;
+                for (auto &arg : func->args()) {
+                    auto name = ex->params[i++];
+                    arg.setName(name);
+                    context[name] = &arg;
+                }
+            }
+
+
+            contextStack.push_back(move(context));
+            llvm::Value *result = nullptr;
+
+            for (auto &next : *rawBody) {
+                result = compile(next.get());
+            }
+
+            if (func->getReturnType()->isVoidTy()) {
+                builder.CreateRetVoid();
+            } else {
+                builder.CreateRet(result);
+            }
+
+            contextStack.pop_back();
         }
+
+        builder.SetInsertPoint(initStartPoint);
+
+        return func;
+    }
+
+    llvm::Value* compileBinaryOp(BinaryOp *ex) {
+        auto left = compile(ex->left.get());
+        auto right = compile(ex->right.get());
+
+        auto op = ex->op;
+
+        // TODO: Handle types besides Float
+        if (op == "+") {
+            return builder.CreateFAdd(left, right, "addTemp");
+        } else if (op == "-") {
+            return builder.CreateFSub(left, right, "subTemp");
+        } else if (op == "*") {
+            return builder.CreateFMul(left, right, "mulTemp");
+        } else if (op == "/") {
+            return builder.CreateFDiv(left, right, "divTemp");
+        } else {
+            throw std::runtime_error("Unknown binary operator: " + op + " at " + ex->loc().pretty());
+        }
+    }
+
+    llvm::Value* lookupValue(const string &id) {
+
+        for (auto i = contextStack.size(); i > 0; --i) {
+            auto &context = contextStack[i - 1];
+
+            if (context.find(id) != context.end()) {
+                return context[id];
+            }
+        }
+
+        return nullptr;
+    }
+
+    llvm::Type* mapTypes(TypeToken& raw) {
+        switch (raw.kind) {
+            case TypeTokenKind::base: {
+                return mapTypes((BaseTypeToken&) raw);
+            }
+            case TypeTokenKind::basicFunction: {
+                return mapTypes((BasicFunctionTypeToken&) raw);
+            }
+            default:
+                throw runtime_error("Unknown type token kind");
+        }
+    }
+
+    llvm::Type* mapTypes(BaseTypeToken& raw) {
+        switch (raw.base) {
+            case BasicTypeTokenKind::Float:
+                return llvm::Type::getDoubleTy(con);
+            case BasicTypeTokenKind::Unit:
+                return llvm::Type::getVoidTy(con);
+            default:
+                throw runtime_error("Unknown base type token kind");
+        }
+    }
+
+    llvm::FunctionType* mapTypes(BasicFunctionTypeToken& token) {
+        vector<llvm::Type*> paramTypes;
+        paramTypes.reserve(token.params.size());
+
+        for (auto &param : token.params) {
+            paramTypes.push_back(mapTypes(*param));
+        }
+
+        return llvm::FunctionType::get(mapTypes(*token.result), paramTypes, false);
+    }
+
+    void setupLibrary() {
+        map<string, llvm::Value*> context;
+
+        llvm::ArrayRef<llvm::Type *> args = {llvm::Type::getDoubleTy(con)};
+        auto printdType = llvm::FunctionType::get(llvm::Type::getVoidTy(con), args, false);
+        mod.getOrInsertFunction("printd", printdType);
+        context["printd"] = mod.getFunction("printd");
+
+        contextStack.clear();
+        contextStack.push_back(move(context));
     }
 
 };
 
 
-void compile(std::string dest, Expression *expression) {
+void compile(const std::string &dest, Module *mod) {
     Compiler compiler;
-    compiler.compile(expression);
+    compiler.compileModule(mod);
     compiler.output(dest);
 }
