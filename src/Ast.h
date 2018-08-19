@@ -13,6 +13,7 @@
 enum ExpressionKind {
     assignment,
     function,
+    call,
     binaryOp,
     variable,
     numberLiteral
@@ -50,6 +51,16 @@ public:
     std::vector<std::unique_ptr<Expression>> body;
 
     Function(Location location, std::string id, std::vector<std::string> params, std::unique_ptr<TypeToken> type, std::vector<std::unique_ptr<Expression>> body);
+
+};
+
+class Call : public Expression {
+public:
+
+    std::unique_ptr<Expression> source;
+    std::vector<std::unique_ptr<Expression>> args;
+
+    Call(Location location, std::unique_ptr<Expression> source, std::vector<std::unique_ptr<Expression>> args);
 
 };
 

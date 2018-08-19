@@ -97,12 +97,33 @@ public:
 
                 return func;
             }
+            case ExpressionKind::call: {
+                auto ex = (Call*) expression;
+
+                auto func = compile(ex->source.get());
+
+                auto rawArgs = &ex->args;
+
+                llvm::Value* args[rawArgs->size()];
+
+                for (int i = 0; i < rawArgs->size(); i++) {
+                    args[i] = compile((*rawArgs)[i].get());
+                }
+
+                return builder.CreateCall(func, *args);
+            }
             case ExpressionKind::variable: {
                 auto ex = (Variable*) expression;
                 auto var = context[ex->id];
 
                 if (var == nullptr) {
-                    throw std::runtime_error("Variable " + ex->id + " is not declared at " + ex->loc().pretty());
+                    auto fun = lookUpLibFunction(ex->id);
+
+                    if (fun == nullptr) {
+                        throw std::runtime_error("Variable " + ex->id + " is not declared at " + ex->loc().pretty());
+                    } else {
+                        return fun;
+                    }
                 }
 
                 return builder.CreateLoad(var, ex->id);
@@ -141,6 +162,18 @@ public:
         std::ofstream innerOut(fileName);
         llvm::raw_os_ostream outStream(innerOut);
         mod.print(outStream, nullptr);
+
+    }
+
+    llvm::Function* lookUpLibFunction(const std::string &id) {
+        if (id == "printd") {
+            llvm::ArrayRef<llvm::Type*> args = { llvm::Type::getDoubleTy(con) };
+
+            mod.getOrInsertFunction("printd", llvm::FunctionType::get(llvm::Type::getVoidTy(con), args, false));
+            return mod.getFunction("printd");
+        } else {
+            return nullptr;
+        }
     }
 
 };

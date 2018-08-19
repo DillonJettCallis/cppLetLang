@@ -3,4 +3,5 @@ fun main (): Unit {
     let x: Float = 4 + 2 * 7
 
     let y: Float = 4 * x + 7
+    printd(y)
 }

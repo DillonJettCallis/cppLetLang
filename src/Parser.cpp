@@ -12,31 +12,33 @@
 #include "Tokens.h"
 #include "Ast.h"
 
-typedef std::istreambuf_iterator<char> CharStream;
+using namespace std;
+
+typedef istreambuf_iterator<char> CharStream;
 
 
-const std::string whiteSpace = " \n\t";
-const std::string singleTokens = "(){},";
-const std::string mergeTokens = ":=+-*/";
+const string whiteSpace = " \n\t";
+const string singleTokens = "(){},";
+const string mergeTokens = ":=+-*/";
 
 class Tokenizer {
 
 private:
 
-    std::string sourceFile;
+    string sourceFile;
     int x = 1;
     int y = 1;
 
 public:
-    explicit Tokenizer(std::string _sourceFile) {
-        sourceFile = std::move(_sourceFile);
+    explicit Tokenizer(string _sourceFile) {
+        sourceFile = move(_sourceFile);
     }
 
-    std::vector<Token> parse() {
-        std::ifstream inputStream(sourceFile);
+    vector<Token> parse() {
+        ifstream inputStream(sourceFile);
 
         if (!inputStream.is_open()) {
-            throw std::runtime_error("Failed to open input file!");
+            throw runtime_error("Failed to open input file!");
         }
 
         CharStream start(inputStream);
@@ -55,7 +57,7 @@ private:
         while (in != end) {
             char next = *in;
 
-            if (whiteSpace.find(next) != std::string::npos) {
+            if (whiteSpace.find(next) != string::npos) {
                 if (next == '\n') {
                     x = 0;
                     y++;
@@ -70,8 +72,8 @@ private:
         }
     }
 
-    std::string readWord(CharStream& in, CharStream end) {
-        std::string word;
+    string readWord(CharStream& in, CharStream end) {
+        string word;
 
         while (in != end) {
             char next = *in;
@@ -88,13 +90,13 @@ private:
         return word;
     }
 
-    std::string readMergedSymbol(CharStream& in, CharStream end) {
-        std::string word;
+    string readMergedSymbol(CharStream& in, CharStream end) {
+        string word;
 
         while (in != end) {
             char next = *in;
 
-            if (mergeTokens.find(next) != std::string::npos) {
+            if (mergeTokens.find(next) != string::npos) {
                 x++;
                 word += next;
                 in++;
@@ -106,8 +108,8 @@ private:
         return word;
     }
 
-    std::string readNumber(CharStream& in, CharStream end) {
-        std::string word;
+    string readNumber(CharStream& in, CharStream end) {
+        string word;
 
         while (in != end) {
             char next = *in;
@@ -124,28 +126,28 @@ private:
         return word;
     }
 
-    std::vector<Token> readFile(CharStream start, CharStream end) {
-        std::vector<Token> out = std::vector<Token>();
+    vector<Token> readFile(CharStream start, CharStream end) {
+        vector<Token> out = vector<Token>();
         CharStream in = start;
 
         while (in != end) {
             char next = *in;
 
-            if (whiteSpace.find(next) != std::string::npos) {
+            if (whiteSpace.find(next) != string::npos) {
                 eatWhitespace(in, end);
             } else if (isalpha(next)) {
                 out.emplace_back(point(), readWord(in, end), TokenType::Identifier);
             } else if (isdigit(next)) {
                 out.emplace_back(point(), readNumber(in, end), TokenType::Number);
-            } else if (singleTokens.find(next) != std::string::npos) {
-                std::string word;
+            } else if (singleTokens.find(next) != string::npos) {
+                string word;
                 word += next;
                 in++;
                 out.emplace_back(point(), word, TokenType::Symbol);
-            } else if (mergeTokens.find(next) != std::string::npos) {
+            } else if (mergeTokens.find(next) != string::npos) {
                 out.emplace_back(point(), readMergedSymbol(in, end), TokenType::Symbol);
             } else {
-                throw std::runtime_error("Illegal symbol: " + std::string(1, next));
+                throw runtime_error("Illegal symbol: " + string(1, next));
             }
         }
 
@@ -154,34 +156,35 @@ private:
     }
 };
 
-std::vector<Token> parseFile(std::string _sourceFile) {
-    return Tokenizer(std::move(_sourceFile)).parse();
+vector<Token> parseFile(string _sourceFile) {
+    return Tokenizer(move(_sourceFile)).parse();
 }
 
 
 class Lexer {
 
-    const std::set<std::string> sumOps = {"+", "-"};
-    const std::set<std::string> productOps = {"*", "/", "**"};
+    const set<string> sumOps = {"+", "-"};
+    const set<string> productOps = {"*", "/", "**"};
 
-    std::vector<Token> tokens;
+    vector<Token> tokens;
     int index = 0;
 public:
-    explicit Lexer(std::vector<Token> tokens): tokens(std::move(tokens)) {
+    explicit Lexer(vector<Token> tokens): tokens(move(tokens)) {
 
     }
 
-    std::unique_ptr<Expression> readStatement() {
-        auto firstWord = next();
+    unique_ptr<Expression> readStatement() {
+        auto firstWord = peek();
 
         if ("let" == firstWord.word) {
+            skip();
             return readAssignment(firstWord.loc);
         } else if ("fun" == firstWord.word) {
+            skip();
             return readFunction(firstWord.loc);
+        } else {
+            return readExpression();
         }
-
-        throw std::runtime_error(firstWord.expected("statement"));
-
     }
 
     bool isDone()  {
@@ -202,15 +205,45 @@ private:
         return tokens[--index];
     }
 
-    std::unique_ptr<Expression> readExpression() {
-        return readSum();
+    void skip() {
+        index++;
+    }
+
+    unique_ptr<Expression> readExpression() {
+        return readCall();
+    }
+    
+    unique_ptr<Expression> readCall() {
+        auto left = readSum();
+
+        auto maybeParen = peek();
+
+        if (maybeParen.word == "(") {
+            index++;
+
+            vector<unique_ptr<Expression>> args;
+
+            while(peek().word != ")") {
+                args.push_back(readExpression());
+
+                if (peek().word == ",") {
+                    index++;
+                }
+            }
+
+            index++;
+
+            return make_unique<Call>(left->loc(), move(left), move(args));
+        } else {
+            return left;
+        }
     }
 
     /**
      * Looks for + or - operators
      * @return
      */
-    std::unique_ptr<Expression> readSum() {
+    unique_ptr<Expression> readSum() {
         auto left = readProduct();
 
         auto maybeSymbol = peek();
@@ -220,7 +253,7 @@ private:
 
             auto right = readProduct();
 
-            return std::make_unique<BinaryOp>(maybeSymbol.loc, std::make_unique<UnknownTypeToken>(), maybeSymbol.word, std::move(left), std::move(right));
+            return make_unique<BinaryOp>(maybeSymbol.loc, make_unique<UnknownTypeToken>(), maybeSymbol.word, move(left), move(right));
         } else {
             return left;
         }
@@ -230,7 +263,7 @@ private:
      * Looks for * / or ** operators
      * @return
      */
-    std::unique_ptr<Expression> readProduct() {
+    unique_ptr<Expression> readProduct() {
         auto left = readTerm();
 
         auto maybeSymbol = peek();
@@ -240,7 +273,7 @@ private:
 
             auto right = readTerm();
 
-            return std::make_unique<BinaryOp>(maybeSymbol.loc, std::make_unique<UnknownTypeToken>(), maybeSymbol.word, std::move(left), std::move(right));
+            return make_unique<BinaryOp>(maybeSymbol.loc, make_unique<UnknownTypeToken>(), maybeSymbol.word, move(left), move(right));
         } else {
             return left;
         }
@@ -250,20 +283,20 @@ private:
      * Looks for a literal or a variable.
      * @return
      */
-    std::unique_ptr<Expression> readTerm() {
+    unique_ptr<Expression> readTerm() {
         auto first = next();
 
         if (first.type == TokenType::Number) {
-            double value = std::stod(first.word);
-            return std::make_unique<NumberLiteral>(first.loc, value);
+            double value = stod(first.word);
+            return make_unique<NumberLiteral>(first.loc, value);
         } else if (first.type == TokenType::Identifier) {
-            return std::make_unique<Variable>(first.loc, first.word, std::make_unique<UnknownTypeToken>());
+            return make_unique<Variable>(first.loc, first.word, make_unique<UnknownTypeToken>());
         }
 
-        throw std::runtime_error(first.expected("expression"));
+        throw runtime_error(first.expected("expression"));
     }
 
-    std::unique_ptr<TypeToken> readMaybeType() {
+    unique_ptr<TypeToken> readMaybeType() {
         auto maybeColon = peek();
 
         if (maybeColon.word == ":") {
@@ -272,23 +305,23 @@ private:
             auto typeName = next();
 
             if (typeName.type != TokenType::Identifier) {
-                throw std::runtime_error(typeName.expected("type identifier"));
+                throw runtime_error(typeName.expected("type identifier"));
             }
 
-            std::unique_ptr<TypeToken> type = std::make_unique<NamedTypeToken>(typeName.word);
+            unique_ptr<TypeToken> type = make_unique<NamedTypeToken>(typeName.word);
             return type;
         } else {
             // Type must be implicit
-            std::unique_ptr<TypeToken> type = std::make_unique<UnknownTypeToken>();
+            unique_ptr<TypeToken> type = make_unique<UnknownTypeToken>();
             return type;
         }
     }
 
-    std::unique_ptr<Expression> readAssignment(Location loc) {
+    unique_ptr<Expression> readAssignment(Location loc) {
         auto id = next();
 
         if (id.type != TokenType::Identifier) {
-            throw std::runtime_error(id.expected("identifier"));
+            throw runtime_error(id.expected("identifier"));
         }
 
         auto type = readMaybeType();
@@ -296,53 +329,53 @@ private:
         auto equals = next();
 
         if (equals.word != "=") {
-            throw std::runtime_error(equals.expected("="));
+            throw runtime_error(equals.expected("="));
         }
 
         auto body = readExpression();
 
-        return std::make_unique<Assignment>(loc, std::move(type), id.word, std::move(body));
+        return make_unique<Assignment>(loc, move(type), id.word, move(body));
     }
 
-    std::unique_ptr<Expression> readFunction(const Location &loc) {
+    unique_ptr<Expression> readFunction(const Location &loc) {
         auto id = next();
 
         if (id.type != TokenType::Identifier) {
-            throw std::runtime_error(id.expected("identifier"));
+            throw runtime_error(id.expected("identifier"));
         }
 
         //TODO: Handle generics later
         auto openParen = next();
 
         if (openParen.word != "(") {
-            throw std::runtime_error(openParen.expected("("));
+            throw runtime_error(openParen.expected("("));
         }
 
-        std::vector<std::string> paramNames;
-        std::vector<std::unique_ptr<TypeToken>> paramTypes;
+        vector<string> paramNames;
+        vector<unique_ptr<TypeToken>> paramTypes;
 
         while (peek().word != ")") {
             auto paramId = next();
 
             if (paramId.type != TokenType::Identifier) {
-                throw std::runtime_error(paramId.expected("identifier"));
+                throw runtime_error(paramId.expected("identifier"));
             }
 
             auto colon = next();
 
             if (colon.word != ":") {
-                throw std::runtime_error(colon.expected(":"));
+                throw runtime_error(colon.expected(":"));
             }
 
             auto paramType = next();
 
             if (paramType.type != TokenType::Identifier) {
-                throw std::runtime_error(paramType.expected("type"));
+                throw runtime_error(paramType.expected("type"));
             }
 
             paramNames.push_back(paramId.word);
-            std::unique_ptr<TypeToken> type = std::make_unique<NamedTypeToken>(paramType.word);
-            paramTypes.push_back(std::move(type));
+            unique_ptr<TypeToken> type = make_unique<NamedTypeToken>(paramType.word);
+            paramTypes.push_back(move(type));
 
             auto maybeComma = peek();
 
@@ -356,26 +389,26 @@ private:
         auto colon = next();
 
         if (colon.word != ":") {
-            throw std::runtime_error(colon.expected(":"));
+            throw runtime_error(colon.expected(":"));
         }
 
         auto resultType = next();
 
         if (resultType.type != TokenType::Identifier) {
-            throw std::runtime_error(resultType.expected("type"));
+            throw runtime_error(resultType.expected("type"));
         }
 
-        auto resultToken = std::make_unique<NamedTypeToken>(resultType.word);
+        auto resultToken = make_unique<NamedTypeToken>(resultType.word);
 
-        std::unique_ptr<TypeToken> functionType = std::make_unique<BasicFunctionTypeToken>(std::move(paramTypes), std::move(resultToken));
+        unique_ptr<TypeToken> functionType = make_unique<BasicFunctionTypeToken>(move(paramTypes), move(resultToken));
 
         auto openBlock = next();
 
         if (openBlock.word != "{") {
-            throw std::runtime_error(openBlock.expected("{"));
+            throw runtime_error(openBlock.expected("{"));
         }
 
-        std::vector<std::unique_ptr<Expression>> body;
+        vector<unique_ptr<Expression>> body;
 
         while (peek().word != "}") {
             body.emplace_back(readStatement());
@@ -383,23 +416,23 @@ private:
 
         index++;
 
-        return std::make_unique<Function>(loc, std::move(id.word), std::move(paramNames), std::move(functionType), std::move(body));
+        return make_unique<Function>(loc, move(id.word), move(paramNames), move(functionType), move(body));
     }
 
 };
 
 class JsonPrinter {
 
-    std::ofstream out;
+    ofstream out;
 
 public:
 
-    JsonPrinter(const std::string &dest) {
+    JsonPrinter(const string &dest) {
         out.open(dest);
     }
 
-    void println(const std::string &message) {
-        out << message << std::endl;
+    void println(const string &message) {
+        out << message << endl;
     }
 
     void print(Expression *expression) {
@@ -427,7 +460,7 @@ public:
                 }
 
                 out << "], body: [";
-                std::vector<std::unique_ptr<Expression>>& body = ex->body;
+                vector<unique_ptr<Expression>>& body = ex->body;
 
                 if (!body.empty()) {
                     print(body[0].get());
@@ -454,11 +487,11 @@ public:
                 break;
             }
             default:
-                throw std::runtime_error("Unknown Expression type");
+                throw runtime_error("Unknown Expression type");
         }
     }
 
-    std::string typeName(TypeToken* typeToken) {
+    string typeName(TypeToken* typeToken) {
         TypeTokenKind kind = typeToken->kind;
 
         switch (kind) {
@@ -469,9 +502,9 @@ public:
             case TypeTokenKind::basicFunction: {
                 auto token = (BasicFunctionTypeToken *) typeToken;
 
-                std::string result = "{params: [";
+                string result = "{params: [";
 
-                std::vector<std::unique_ptr<TypeToken>>& params = token->params;
+                vector<unique_ptr<TypeToken>>& params = token->params;
 
                 if (!params.empty()) {
                     result += typeName(params[0].get());
@@ -490,22 +523,22 @@ public:
             case TypeTokenKind::unknown:
                 return "'<unknown>'";
             default:
-                throw std::runtime_error("Unknown TypeToken type");
+                throw runtime_error("Unknown TypeToken type");
         }
     }
 
 };
 
-std::unique_ptr<Expression> lex(std::vector<Token> tokens) {
-    auto lexer = Lexer(std::move(tokens));
+unique_ptr<Expression> lex(vector<Token> tokens) {
+    auto lexer = Lexer(move(tokens));
 
-    return std::move(lexer.readStatement());
+    return move(lexer.readStatement());
 }
 
-void lexAndPrint(std::vector<Token> tokens) {
+void lexAndPrint(vector<Token> tokens) {
 
 
-    auto lexer = Lexer(std::move(tokens));
+    auto lexer = Lexer(move(tokens));
 
     JsonPrinter printer("/home/dillon/projects/cppLetLang/build/ast.js");
 
