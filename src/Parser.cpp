@@ -536,7 +536,7 @@ private:
             throw runtime_error(id.expected("identifier"));
         }
 
-        //TODO: Handle generics later
+        // TODO: Handle generics later
         auto openParen = next();
 
         if (openParen.word != "(") {
@@ -594,19 +594,13 @@ private:
 
         unique_ptr<TypeToken> functionType = make_unique<BasicFunctionTypeToken>(move(paramTypes), move(resultToken));
 
-        auto openBlock = next();
+        auto equals = next();
 
-        if (openBlock.word != "{") {
-            throw runtime_error(openBlock.expected("{"));
+        if (equals.word != "=") {
+            throw runtime_error(equals.expected("="));
         }
 
-        vector<unique_ptr<Expression>> body;
-
-        while (peek().word != "}") {
-            body.emplace_back(readStatement());
-        }
-
-        skip();
+        auto body = readExpression();
 
         return make_unique<Function>(loc, move(id.word), move(paramNames), move(functionType), move(body));
     }
@@ -651,17 +645,9 @@ public:
                     }
                 }
 
-                out << "], body: [";
-                vector<unique_ptr<Expression>> &body = ex->body;
-
-                if (!body.empty()) {
-                    print(body[0].get());
-                    for (int i = 1; i < body.size(); i++) {
-                        out << ", ";
-                        print(body[i].get());
-                    }
-                }
-                out << "]}";
+                out << "], body: ";
+                print(ex->body.get());
+                out << "}";
                 break;
             }
             case ExpressionKind::call: {
@@ -789,8 +775,8 @@ unique_ptr<Module> lex(vector<Token> tokens) {
     return lexer.readModule();
 }
 
-void printModule(Module& module) {
-    JsonPrinter printer("/home/dillon/projects/cppLetLang/build/ast.js");
+void printModule(Module& module, string dest) {
+    JsonPrinter printer(dest);
 
     printer.println("const ast = [");
 

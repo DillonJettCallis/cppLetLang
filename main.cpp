@@ -15,9 +15,11 @@ int main() {
 
         println("Done lex, doing typecheck");
 
+        printModule(*ast, "/home/dillon/projects/cppLetLang/build/ast.js");
+
         typeCheck(*ast);
 
-        printModule(*ast);
+        printModule(*ast, "/home/dillon/projects/cppLetLang/build/typedAst.js");
 
         println("Done typecheck, doing compile");
 

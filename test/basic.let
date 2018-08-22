@@ -1,20 +1,21 @@
 
 
-fun addFive(z: Float): Float {
-  let ans = z + 5
-}
+fun addFive(z: Float): Float = z + 5
 
-fun main (): Unit {
+fun main (): Unit = {
   let x: Float = { 4 + 2 } * 7
   printd(x)
 
-  let y: Float = 4 * x + 7
+  let y: Float = 4 / x + 7
 
   let z = if x > y then {
-    0
+    let k = 5 * y
+    k + 2
   } else {
     1
   }
+
+  printd(z)
 
   let nest = if z > y then if z < 4 then 4 else 7 else 1
 

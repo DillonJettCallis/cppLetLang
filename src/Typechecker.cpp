@@ -53,11 +53,11 @@ private:
         func._type = move(funcType);
         contextStack.push_back(move(context));
 
-        for (auto &ex : func.body) {
-            checkExpression(*ex);
-        }
+        checkExpression(*func.body);
 
         contextStack.pop_back();
+
+        contextStack.back()[func.id] = func._type->clone();
     }
 
     void checkExpression(Expression &expression) {

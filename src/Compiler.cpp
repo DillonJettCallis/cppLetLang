@@ -203,38 +203,32 @@ private:
 
         auto rawBody = &ex->body;
 
-        // Weird special case for an empty function.
-        if (rawBody->empty()) {
+
+        map<string, llvm::Value*> context;
+
+        {
+            // Block to keep i out of scope.
+            int i = 0;
+            for (auto &arg : func->args()) {
+                auto name = ex->params[i++];
+                arg.setName(name);
+                context[name] = &arg;
+            }
+        }
+
+
+        contextStack.push_back(move(context));
+        llvm::Value *result = compile(rawBody->get());
+
+
+        if (func->getReturnType()->isVoidTy()) {
             builder.CreateRetVoid();
         } else {
-            map<string, llvm::Value*> context;
-
-            {
-                // Block to keep i out of scope.
-                int i = 0;
-                for (auto &arg : func->args()) {
-                    auto name = ex->params[i++];
-                    arg.setName(name);
-                    context[name] = &arg;
-                }
-            }
-
-
-            contextStack.push_back(move(context));
-            llvm::Value *result = nullptr;
-
-            for (auto &next : *rawBody) {
-                result = compile(next.get());
-            }
-
-            if (func->getReturnType()->isVoidTy()) {
-                builder.CreateRetVoid();
-            } else {
-                builder.CreateRet(result);
-            }
-
-            contextStack.pop_back();
+            builder.CreateRet(result);
         }
+
+        contextStack.pop_back();
+
 
         builder.SetInsertPoint(initStartPoint);
 

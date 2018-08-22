@@ -54,9 +54,9 @@ public:
 
     std::string id;
     std::vector<std::string> params;
-    std::vector<std::unique_ptr<Expression>> body;
+    std::unique_ptr<Expression> body;
 
-    Function(Location location, std::string id, std::vector<std::string> params, std::unique_ptr<TypeToken> type, std::vector<std::unique_ptr<Expression>> body);
+    Function(Location location, std::string id, std::vector<std::string> params, std::unique_ptr<TypeToken> type, std::unique_ptr<Expression> body);
 
 };
 

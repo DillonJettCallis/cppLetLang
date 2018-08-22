@@ -28,7 +28,7 @@ Assignment::Assignment(Location location, unique_ptr<TypeToken> type, string id,
 
 }
 
-Function::Function(Location location, string id, vector<string> params, unique_ptr<TypeToken> type, vector<unique_ptr<Expression>> body) :
+Function::Function(Location location, string id, vector<string> params, unique_ptr<TypeToken> type, unique_ptr<Expression> body) :
         Expression(ExpressionKind::function, move(location), move(type)),
         id(move(id)),
         params(move(params)),
