@@ -8,7 +8,12 @@ fun main (): Unit {
   let x: Float = 4 + 2 * 7
 
   let y: Float = 4 * x + 7
-  printd(addFive(y))
+
+  let z = if x > y then 0 else 1
+
+  let nest = if z > y then if z < 4 then 4 else 7 else 1
+
+  printd(addFive(nest))
 }
 
 

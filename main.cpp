@@ -13,6 +13,8 @@ int main() {
 
         auto ast = lex(tokens);
 
+        printModule(*ast);
+
         println("Done lex, doing typecheck");
 
         typeCheck(*ast);

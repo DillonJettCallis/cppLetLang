@@ -14,9 +14,12 @@ enum ExpressionKind {
     assignment,
     function,
     call,
+    ifEx,
     binaryOp,
     variable,
-    numberLiteral
+    numberLiteral,
+    booleanLiteral,
+    nullLiteral
 };
 
 class Expression {
@@ -66,6 +69,17 @@ public:
 
 };
 
+class If : public Expression {
+public:
+
+    std::unique_ptr<Expression> condition;
+    std::unique_ptr<Expression> thenEx;
+    std::unique_ptr<Expression> elseEx;
+
+    If(Location location, std::unique_ptr<TypeToken> type, std::unique_ptr<Expression> condition, std::unique_ptr<Expression> thenEx, std::unique_ptr<Expression> elseEx);
+
+};
+
 class BinaryOp : public Expression {
 public:
 
@@ -92,6 +106,21 @@ public:
     double value;
 
     NumberLiteral(Location location, double value);
+
+};
+
+class BooleanLiteral : public Expression {
+public:
+    bool value;
+
+    BooleanLiteral(Location location, bool value);
+
+};
+
+class NullLiteral : public Expression {
+public:
+
+    explicit NullLiteral(Location location);
 
 };
 

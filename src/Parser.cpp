@@ -18,9 +18,9 @@ using namespace std;
 typedef istreambuf_iterator<char> CharStream;
 
 
-const string whiteSpace = " \n\t";
-const string singleTokens = "(){},";
-const string mergeTokens = ":=+-*/";
+const string whiteSpace = " \n\r\t";
+const string singleTokens = "(){}[],";
+const string mergeTokens = ":=+-*/<>&|";
 
 class Tokenizer {
 
@@ -60,7 +60,7 @@ private:
 
             if (whiteSpace.find(next) != string::npos) {
                 if (next == '\n') {
-                    x = 0;
+                    x = 1;
                     y++;
                     in++;
                 } else {
@@ -72,6 +72,56 @@ private:
             }
         }
     }
+
+    void eatLineComment(CharStream &in, CharStream end) {
+        while (in != end) {
+            char next = *in;
+
+            if (next == '\n') {
+                x = 1;
+                y++;
+                in++;
+                return;
+            } else {
+                x++;
+                in++;
+            }
+        }
+    }
+
+    void eatBlockComment(CharStream &in, CharStream end) {
+        while (in != end) {
+            char next = *in;
+
+            if (next == '*') {
+                x++;
+                in++;
+                char maybe = *in;
+                in++;
+
+                if (maybe == '/') {
+                    x++;
+                    return;
+                } else {
+                    if (maybe == '\n') {
+                        x = 1;
+                        y++;
+                    } else {
+                        x++;
+                    }
+                }
+            } else {
+                in++;
+                if (next == '\n') {
+                    x = 1;
+                    y++;
+                } else {
+                    x++;
+                }
+            }
+        }
+    }
+
 
     string readWord(CharStream &in, CharStream end) {
         string word;
@@ -146,7 +196,24 @@ private:
                 in++;
                 out.emplace_back(point(), word, TokenType::Symbol);
             } else if (mergeTokens.find(next) != string::npos) {
-                out.emplace_back(point(), readMergedSymbol(in, end), TokenType::Symbol);
+                if (next == '/') {
+                    in++;
+                    char test = *in;
+
+                    if (test == '/') {
+                        eatLineComment(in, end);
+                    } else if (test == '*') {
+                        eatBlockComment(in, end);
+                    } else {
+                        if (mergeTokens.find(test) != string::npos) {
+                            out.emplace_back(point(), "/" + readMergedSymbol(in, end), TokenType::Symbol);
+                        } else {
+                            out.emplace_back(point(), "/", TokenType::Symbol);
+                        }
+                    }
+                } else {
+                    out.emplace_back(point(), readMergedSymbol(in, end), TokenType::Symbol);
+                }
             } else {
                 throw runtime_error("Illegal symbol: " + string(1, next));
             }
@@ -164,8 +231,10 @@ vector<Token> parseFile(string _sourceFile) {
 
 class Lexer {
 
+    const set<string> boolOps = {"&&", "||"};
+    const set<string> compareOps = {">=", ">", "<", "<=", "==", "!="};
     const set<string> sumOps = {"+", "-"};
-    const set<string> productOps = {"*", "/", "**"};
+    const set<string> productOps = {"*", "/"};
 
     vector<Token> tokens;
     int index = 0;
@@ -228,11 +297,39 @@ private:
     }
 
     unique_ptr<Expression> readExpression() {
-        return readCall();
+        return readIf();
+    }
+
+    unique_ptr<Expression> readIf() {
+        auto firstWord = peek();
+
+        if ("if" == firstWord.word) {
+            skip();
+
+            auto condition = readCall();
+
+            auto maybeThen = next();
+
+            if (maybeThen.word != "then") {
+                throw runtime_error(maybeThen.expected("then"));
+            }
+
+            auto thenEx = readExpression();
+
+            auto maybeElse = peek();
+
+            // If there is no else, return a null literal.
+            unique_ptr<Expression> elseEx = maybeElse.word == "else" ? (skip(), readExpression()) : make_unique<NullLiteral>(firstWord.loc);
+
+            return make_unique<If>(firstWord.loc, make_unique<UnknownTypeToken>(), move(condition), move(thenEx), move(elseEx));
+        } else {
+            return readCall();
+        }
+
     }
 
     unique_ptr<Expression> readCall() {
-        auto left = readSum();
+        auto left = readBoolOp();
 
         auto maybeParen = peek();
 
@@ -252,6 +349,48 @@ private:
             skip();
 
             return make_unique<Call>(left->loc(), move(make_unique<UnknownTypeToken>()), move(left), move(args));
+        } else {
+            return left;
+        }
+    }
+
+    /**
+     * Looks for && or || operators
+     * @return
+     */
+    unique_ptr<Expression> readBoolOp() {
+        auto left = readCompare();
+
+        auto maybeSymbol = peek();
+
+        if (boolOps.count(maybeSymbol.word) == 1) {
+            skip();
+
+            auto right = readCompare();
+
+            return make_unique<BinaryOp>(maybeSymbol.loc, make_unique<UnknownTypeToken>(), maybeSymbol.word, move(left),
+                                         move(right));
+        } else {
+            return left;
+        }
+    }
+
+    /**
+     * Looks for >=, >, <, <=, ==, != operators
+     * @return
+     */
+    unique_ptr<Expression> readCompare() {
+        auto left = readSum();
+
+        auto maybeSymbol = peek();
+
+        if (compareOps.count(maybeSymbol.word) == 1) {
+            skip();
+
+            auto right = readSum();
+
+            return make_unique<BinaryOp>(maybeSymbol.loc, make_unique<UnknownTypeToken>(), maybeSymbol.word, move(left),
+                                         move(right));
         } else {
             return left;
         }
@@ -310,6 +449,14 @@ private:
             double value = stod(first.word);
             return make_unique<NumberLiteral>(first.loc, value);
         } else if (first.type == TokenType::Identifier) {
+            if (first.word == "true") {
+                return make_unique<BooleanLiteral>(first.loc, true);
+            }
+
+            if (first.word == "false") {
+                return make_unique<BooleanLiteral>(first.loc, false);
+            }
+
             return make_unique<Variable>(first.loc, first.word, make_unique<UnknownTypeToken>());
         }
 
@@ -492,6 +639,34 @@ public:
                 out << "]}";
                 break;
             }
+            case ExpressionKind::call: {
+                auto ex = (Call *) expression;
+                out << "{kind: 'call', type: " << typeName(ex->type()) << ", source: ";
+                print(ex->source.get());
+                out << ", args: [";
+                vector<unique_ptr<Expression>> &args = ex->args;
+
+                if (!args.empty()) {
+                    print(args[0].get());
+                    for (int i = 1; i < args.size(); i++) {
+                        out << ", ";
+                        print(args[i].get());
+                    }
+                }
+                out << "]}";
+                break;
+            }
+            case ExpressionKind::ifEx: {
+                auto ex = (If *) expression;
+                out << "{kind: 'if', type: " << typeName(ex->type()) << ", condition: ";
+                print(ex->condition.get());
+                out << ", thenEx: ";
+                print(ex->thenEx.get());
+                out << ", elseEx: ";
+                print(ex->elseEx.get());
+                out << "}";
+                break;
+            }
             case ExpressionKind::binaryOp: {
                 auto ex = (BinaryOp *) expression;
                 out << "{kind: 'binaryOp', type: " << typeName(ex->type()) << ", op: '" << ex->op << "', left: ";
@@ -501,9 +676,23 @@ public:
                 out << "}";
                 break;
             }
+            case ExpressionKind::variable: {
+                auto ex = (Variable *) expression;
+                out << "'" << ex->id<< "'";
+                break;
+            }
             case ExpressionKind::numberLiteral: {
                 auto ex = (NumberLiteral *) expression;
-                out << ex->value;
+                out << ex->value ;
+                break;
+            }
+            case ExpressionKind::booleanLiteral: {
+                auto ex = (BooleanLiteral *) expression;
+                out << (ex->value ? "true" : "false");
+                break;
+            }
+            case ExpressionKind::nullLiteral: {
+                out << "null";
                 break;
             }
             default:
@@ -517,7 +706,11 @@ public:
         switch (kind) {
             case TypeTokenKind::named: {
                 auto token = (NamedTypeToken &) typeToken;
-                return "'" + token.id + "'";
+                return "'" + token.pretty() + "'";
+            }
+            case TypeTokenKind::base: {
+                auto token = (BaseTypeToken &) typeToken;
+                return "'" + token.pretty() + "'";
             }
             case TypeTokenKind::basicFunction: {
                 auto &token = (BasicFunctionTypeToken&) typeToken;
@@ -555,21 +748,15 @@ unique_ptr<Module> lex(vector<Token> tokens) {
     return lexer.readModule();
 }
 
-void lexAndPrint(vector<Token> tokens) {
-
-    auto lexer = Lexer(move(tokens));
-
+void printModule(Module& module) {
     JsonPrinter printer("/home/dillon/projects/cppLetLang/build/ast.js");
 
     printer.println("const ast = [");
 
-    auto module = lexer.readModule();
-
-    for (auto &ex : module->functions) {
+    for (auto &ex : module.functions) {
         printer.print(ex.get());
         printer.println(",");
     }
 
     printer.println("];");
-    println("Parsed and lexed");
 }

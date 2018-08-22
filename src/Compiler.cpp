@@ -94,6 +94,51 @@ private:
 
                 return builder.CreateCall(func, *args);
             }
+            case ExpressionKind::ifEx: {
+                auto ex = (If *) expression;
+
+                //create condition
+                auto condition = compile(ex->condition.get());
+
+                auto ifBlock = builder.CreateICmpEQ(condition, llvm::ConstantInt::getTrue(con), "ifCondition");
+
+                // create blocks
+                auto currentFunction = builder.GetInsertBlock()->getParent();
+
+                auto thenBlock = llvm::BasicBlock::Create(con, "thenBlock", currentFunction);
+                auto elseBlock = llvm::BasicBlock::Create(con, "elseBlock");
+                auto mergeBlock = llvm::BasicBlock::Create(con, "ifContinued");
+
+                builder.CreateCondBr(ifBlock, thenBlock, elseBlock);
+
+                // Create then block
+                builder.SetInsertPoint(thenBlock);
+                auto thenResult = compile(ex->thenEx.get());
+                builder.CreateBr(mergeBlock);
+                thenBlock = builder.GetInsertBlock();
+
+                // Create else block
+                currentFunction->getBasicBlockList().push_back(elseBlock);
+                builder.SetInsertPoint(elseBlock);
+                auto elseResult = compile(ex->elseEx.get());
+                builder.CreateBr(mergeBlock);
+                elseBlock = builder.GetInsertBlock();
+
+                // Create merge block
+                currentFunction->getBasicBlockList().push_back(mergeBlock);
+                builder.SetInsertPoint(mergeBlock);
+
+                // Merge resulting values
+                auto phi = builder.CreatePHI(mapTypes(ex->type()), 2, "ifTemp");
+                phi->addIncoming(thenResult, thenBlock);
+                phi->addIncoming(elseResult, elseBlock);
+                return phi;
+            }
+            case ExpressionKind::binaryOp: {
+                auto ex = (BinaryOp *) expression;
+
+                return compileBinaryOp(ex);
+            }
             case ExpressionKind::variable: {
                 auto ex = (Variable *) expression;
                 auto var = lookupValue(ex->id);
@@ -104,14 +149,21 @@ private:
 
                 return var;
             }
-            case ExpressionKind::binaryOp: {
-                auto ex = (BinaryOp *) expression;
-
-                return compileBinaryOp(ex);
-            }
             case ExpressionKind::numberLiteral: {
                 auto ex = (NumberLiteral *) expression;
                 return llvm::ConstantFP::get(con, llvm::APFloat(ex->value));
+            }
+            case ExpressionKind::booleanLiteral: {
+                auto ex = (BooleanLiteral *) expression;
+                if (ex->value) {
+                    return llvm::ConstantInt::getTrue(con);
+                } else {
+                    return llvm::ConstantInt::getFalse(con);
+                }
+            }
+            case ExpressionKind::nullLiteral: {
+                // TODO: Handle nulls somehow?
+                return llvm::ConstantFP::get(con, llvm::APFloat(0.0));
             }
             default:
                 throw std::runtime_error("Unknown Expression type");
@@ -146,6 +198,7 @@ private:
             map<string, llvm::Value*> context;
 
             {
+                // Block to keep i out of scope.
                 int i = 0;
                 for (auto &arg : func->args()) {
                     auto name = ex->params[i++];
@@ -191,6 +244,22 @@ private:
             return builder.CreateFMul(left, right, "mulTemp");
         } else if (op == "/") {
             return builder.CreateFDiv(left, right, "divTemp");
+        } else if (op == "==") {
+            return builder.CreateFCmpOEQ(left, right, "equalTemp");
+        } else if (op == "!=") {
+            return builder.CreateFCmpONE(left, right, "notEqualTemp");
+        } else if (op == ">=") {
+            return builder.CreateFCmpOGE(left, right, "greaterOrEqualTemp");
+        } else if (op == ">") {
+            return builder.CreateFCmpOGT(left, right, "greaterTemp");
+        } else if (op == "<") {
+            return builder.CreateFCmpOLT(left, right, "lessTemp");
+        } else if (op == "<=") {
+            return builder.CreateFCmpOLE(left, right, "lessOrEqualTemp");
+        } else if (op == "&&") {
+            return builder.CreateAnd(left, right, "andTemp");
+        } else if (op == "||") {
+            return builder.CreateOr(left, right, "orTemp");
         } else {
             throw std::runtime_error("Unknown binary operator: " + op + " at " + ex->loc().pretty());
         }

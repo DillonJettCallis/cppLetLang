@@ -10,8 +10,9 @@ using namespace std;
 
 class Typechecker {
 
-    map<string, BasicTypeTokenKind> knownBasicTypes{{"Float", BasicTypeTokenKind::Float},
-                                                    {"Unit",  BasicTypeTokenKind::Unit}};
+    map<string, BasicTypeTokenKind> knownBasicTypes{{"Float",   BasicTypeTokenKind::Float},
+                                                    {"Boolean", BasicTypeTokenKind::Boolean},
+                                                    {"Unit",    BasicTypeTokenKind::Unit}};
     vector<map<string, unique_ptr<TypeToken>>> contextStack{};
 
 public:
@@ -124,14 +125,48 @@ private:
 
                 break;
             }
+            case ExpressionKind::ifEx: {
+                auto &ex = (If &) expression;
+
+                checkExpression(*ex.condition);
+
+                if (BaseTypeToken(BasicTypeTokenKind::Boolean) != ex.condition->type()) {
+                    throw runtime_error("Condition of if statement is not a boolean " + ex.loc().pretty());
+                }
+
+                checkExpression(*ex.thenEx);
+                checkExpression(*ex.elseEx);
+
+                if (ex.thenEx->type() == ex.elseEx->type() || BaseTypeToken(BasicTypeTokenKind::Unit) == ex.elseEx->type()) {
+                    ex._type = ex.thenEx->type().clone();
+                } else {
+                    // TODO: Handle polymorphism.
+                    throw runtime_error("if expression then and else blocks do not return the same type. Then type: " + ex.thenEx->type().pretty() + " else type: " + ex.elseEx->type().pretty());
+                }
+
+                break;
+            }
             case ExpressionKind::binaryOp: {
                 auto &ex = (BinaryOp &) expression;
 
                 checkExpression(*ex.left);
                 checkExpression(*ex.right);
 
-                // TODO: Real checks against known ops.
-                ex._type = make_unique<BaseTypeToken>(BasicTypeTokenKind::Float);
+                /* TODO: More complex type checking here. Maybe reuse function code.
+                         This will become very acute when the math operators get overloads. */
+                auto &opFunc = (BasicFunctionTypeToken &) lookupType(ex.op);
+
+                if (ex.left->type() != *opFunc.params[0]) {
+                    throw runtime_error("Invalid use of " + ex.op + " operator. Left hand expression is of type " +
+                                        ex.left->type().pretty() + ", expected type " + opFunc.params[0]->pretty());
+                }
+
+                if (ex.right->type() != *opFunc.params[1]) {
+                    throw runtime_error("Invalid use of " + ex.op + " operator. Right hand expression is of type " +
+                                        ex.right->type().pretty() + ", expected type " + opFunc.params[1]->pretty());
+                }
+
+                ex._type = opFunc.result->clone();
                 break;
             }
             case ExpressionKind::variable: {
@@ -140,6 +175,8 @@ private:
                 break;
             }
             case ExpressionKind::numberLiteral:
+            case ExpressionKind::booleanLiteral:
+            case ExpressionKind::nullLiteral:
                 break;
             default:
                 throw runtime_error("Unknown expression kind");
@@ -203,7 +240,7 @@ private:
     void setupLibrary() {
         map<string, unique_ptr<TypeToken>> context;
 
-        BaseTypeToken floatType(BasicTypeTokenKind::Float);
+
         BaseTypeToken unitType(BasicTypeTokenKind::Unit);
 
         vector<unique_ptr<TypeToken>> printdParams;
@@ -211,10 +248,55 @@ private:
 
         context["printd"] = make_unique<BasicFunctionTypeToken>(move(printdParams), move(unitType.clone()));
 
+        context["+"] = move(makeNumberOp());
+        context["-"] = move(makeNumberOp());
+        context["*"] = move(makeNumberOp());
+        context["/"] = move(makeNumberOp());
+
+        context["=="] = move(makeCompareOp());
+        context["!="] = move(makeCompareOp());
+        context[">="] = move(makeCompareOp());
+        context[">"] = move(makeCompareOp());
+        context["<"] = move(makeCompareOp());
+        context["<="] = move(makeCompareOp());
+
+        context["&&"] = move(makeBooleanOp());
+        context["||"] = move(makeBooleanOp());
+
         contextStack.clear();
         contextStack.push_back(move(context));
     }
 
+    unique_ptr<BasicFunctionTypeToken> makeNumberOp() {
+        vector<unique_ptr<TypeToken>> params;
+        params.emplace_back(make_unique<BaseTypeToken>(BasicTypeTokenKind::Float));
+        params.emplace_back(make_unique<BaseTypeToken>(BasicTypeTokenKind::Float));
+
+        return make_unique<BasicFunctionTypeToken>(
+                move(params),
+                move(make_unique<BaseTypeToken>(BasicTypeTokenKind::Float)));
+    }
+
+    unique_ptr<BasicFunctionTypeToken> makeCompareOp() {
+        vector<unique_ptr<TypeToken>> params;
+        params.emplace_back(make_unique<BaseTypeToken>(BasicTypeTokenKind::Float));
+        params.emplace_back(make_unique<BaseTypeToken>(BasicTypeTokenKind::Float));
+
+        return make_unique<BasicFunctionTypeToken>(
+                move(params),
+                make_unique<BaseTypeToken>(BasicTypeTokenKind::Boolean));
+    }
+
+    unique_ptr<BasicFunctionTypeToken> makeBooleanOp() {
+        vector<unique_ptr<TypeToken>> params;
+        params.emplace_back(make_unique<BaseTypeToken>(BasicTypeTokenKind::Boolean));
+        params.emplace_back(make_unique<BaseTypeToken>(BasicTypeTokenKind::Boolean));
+
+        return make_unique<BasicFunctionTypeToken>(
+                move(params),
+                move(make_unique<BaseTypeToken>(BasicTypeTokenKind::Boolean)));
+
+    }
 };
 
 

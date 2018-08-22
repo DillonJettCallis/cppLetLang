@@ -17,6 +17,7 @@ enum TypeTokenKind {
 
 enum BasicTypeTokenKind {
     Float,
+    Boolean,
     Unit
 };
 
@@ -42,7 +43,7 @@ public:
 
     std::string id;
 
-    NamedTypeToken(std::string id);
+    explicit NamedTypeToken(std::string id);
 
     bool operator==(TypeToken& other) override;
 

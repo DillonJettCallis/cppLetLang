@@ -43,6 +43,12 @@ Call::Call(Location location, unique_ptr<TypeToken> type, unique_ptr<Expression>
     
 }
 
+If::If(Location location, std::unique_ptr<TypeToken> type, std::unique_ptr<Expression> condition, std::unique_ptr<Expression> thenEx, std::unique_ptr<Expression> elseEx) :
+    Expression(ExpressionKind::ifEx, move(location), move(type)),
+    condition(move(condition)),
+    thenEx(move(thenEx)),
+    elseEx(move(elseEx)) {}
+
 BinaryOp::BinaryOp(Location location, unique_ptr<TypeToken> type, string op, unique_ptr<Expression> left, unique_ptr<Expression> right) :
         Expression(ExpressionKind::binaryOp, move(location), move(type)),
         op(move(op)),
@@ -58,5 +64,9 @@ Variable::Variable(Location location, string id, unique_ptr<TypeToken> type) :
 }
 
 NumberLiteral::NumberLiteral(Location location, double value) : Expression(ExpressionKind::numberLiteral, move(location), make_unique<BaseTypeToken>(BasicTypeTokenKind::Float)), value(value) {}
+
+BooleanLiteral::BooleanLiteral(Location location, bool value) : Expression(ExpressionKind::booleanLiteral, move(location), make_unique<BaseTypeToken>(BasicTypeTokenKind::Boolean)), value(value) {}
+
+NullLiteral::NullLiteral(Location location) : Expression(ExpressionKind::nullLiteral, move(location), make_unique<BaseTypeToken>(BasicTypeTokenKind::Unit)) {}
 
 Module::Module(vector<unique_ptr<Function>> functions) : functions(move(functions)) {}

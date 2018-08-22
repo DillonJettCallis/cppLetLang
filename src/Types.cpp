@@ -13,7 +13,7 @@ bool TypeToken::operator!=(TypeToken& other) {
     return !(*this == other);
 }
 
-NamedTypeToken::NamedTypeToken(std::string id) : TypeToken(TypeTokenKind::named), id(std::move(id)) {}
+NamedTypeToken::NamedTypeToken(std::string id) : TypeToken(TypeTokenKind::named), id(move(id)) {}
 
 bool NamedTypeToken::operator==(TypeToken& other) {
     return other.kind == TypeTokenKind::named && ((NamedTypeToken&) other).id == id;
@@ -24,7 +24,7 @@ unique_ptr<TypeToken> NamedTypeToken::clone() {
 }
 
 string NamedTypeToken::pretty() {
-    return id;
+    return "<" + id + ">";
 }
 
 BasicFunctionTypeToken::BasicFunctionTypeToken(std::vector<std::unique_ptr<TypeToken>> params, std::unique_ptr<TypeToken> result) :

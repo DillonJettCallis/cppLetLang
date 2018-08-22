@@ -14,6 +14,6 @@ std::vector<Token> parseFile(std::string _sourceFile);
 
 std::unique_ptr<Module> lex(std::vector<Token> tokens);
 
-void lexAndPrint(std::vector<Token> tokens);
+void printModule(Module& module);
 
 #endif //TYPEDLETLANG_PARSER_H
