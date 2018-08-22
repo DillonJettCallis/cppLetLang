@@ -169,6 +169,21 @@ private:
                 ex._type = opFunc.result->clone();
                 break;
             }
+            case ExpressionKind::block: {
+                auto &ex = (Block &) expression;
+
+                if (ex.body.empty()) {
+                    ex._type = make_unique<BaseTypeToken>(BasicTypeTokenKind::Unit);
+                    break;
+                }
+
+                for (auto &e : ex.body) {
+                    checkExpression(*e);
+                }
+
+                ex._type = ex.body.back().get()->type().clone();
+                break;
+            }
             case ExpressionKind::variable: {
                 auto &ex = (Variable &) expression;
                 ex._type = lookupType(ex.id).clone();

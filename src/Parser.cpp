@@ -422,19 +422,44 @@ private:
      * @return
      */
     unique_ptr<Expression> readProduct() {
-        auto left = readTerm();
+        auto left = readBlock();
 
         auto maybeSymbol = peek();
 
         if (productOps.count(maybeSymbol.word) == 1) {
             skip();
 
-            auto right = readTerm();
+            auto right = readBlock();
 
             return make_unique<BinaryOp>(maybeSymbol.loc, make_unique<UnknownTypeToken>(), maybeSymbol.word, move(left),
                                          move(right));
         } else {
             return left;
+        }
+    }
+
+    /**
+     * Looks for blocks { }
+     */
+    unique_ptr<Expression> readBlock() {
+        auto maybeBrace = peek();
+
+        if (maybeBrace.word == "{") {
+            skip();
+            vector<unique_ptr<Expression>> body;
+
+            auto maybeClose = peek();
+
+            while (maybeClose.word != "}") {
+                body.emplace_back(move(readStatement()));
+                maybeClose = peek();
+            }
+
+            skip();
+
+            return make_unique<Block>(maybeBrace.loc, make_unique<UnknownTypeToken>(), move(body));
+        } else {
+            return readTerm();
         }
     }
 
@@ -674,6 +699,22 @@ public:
                 out << ", right: ";
                 print(ex->right.get());
                 out << "}";
+                break;
+            }
+            case ExpressionKind::block: {
+                auto ex = (Block *) expression;
+
+                out << "{kind: 'block', type: " << typeName(ex->type()) << ", body: [";
+                vector<unique_ptr<Expression>> &body = ex->body;
+
+                if (!body.empty()) {
+                    print(body[0].get());
+                    for (int i = 1; i < body.size(); i++) {
+                        out << ", ";
+                        print(body[i].get());
+                    }
+                }
+                out << "]}";
                 break;
             }
             case ExpressionKind::variable: {

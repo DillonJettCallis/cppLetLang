@@ -139,6 +139,18 @@ private:
 
                 return compileBinaryOp(ex);
             }
+            case ExpressionKind::block: {
+                auto ex = (Block *) expression;
+
+                // TODO: Think about Unit better.
+                llvm::Value *last = llvm::ConstantFP::get(con, llvm::APFloat(0.0));
+
+                for (auto &next : ex->body) {
+                    last = compile(next.get());
+                }
+
+                return last;
+            }
             case ExpressionKind::variable: {
                 auto ex = (Variable *) expression;
                 auto var = lookupValue(ex->id);

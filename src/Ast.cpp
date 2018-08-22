@@ -57,6 +57,10 @@ BinaryOp::BinaryOp(Location location, unique_ptr<TypeToken> type, string op, uni
 
 }
 
+Block::Block(Location location, std::unique_ptr<TypeToken> type, std::vector<std::unique_ptr<Expression>> body) :
+    Expression(ExpressionKind::block, move(location), move(type)),
+    body(move(body)) {}
+
 Variable::Variable(Location location, string id, unique_ptr<TypeToken> type) :
     Expression(ExpressionKind::variable, move(location), move(type)),
     id(move(id)) {

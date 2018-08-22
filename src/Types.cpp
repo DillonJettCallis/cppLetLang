@@ -88,6 +88,8 @@ string BaseTypeToken::pretty() {
     switch(base) {
         case BasicTypeTokenKind::Float:
             return "Float";
+        case BasicTypeTokenKind::Boolean:
+            return "Boolean";
         case BasicTypeTokenKind::Unit:
             return "Unit";
         default:

@@ -16,6 +16,7 @@ enum ExpressionKind {
     call,
     ifEx,
     binaryOp,
+    block,
     variable,
     numberLiteral,
     booleanLiteral,
@@ -88,6 +89,15 @@ public:
     std::unique_ptr<Expression> right;
 
     BinaryOp(Location location, std::unique_ptr<TypeToken> type, std::string op, std::unique_ptr<Expression> left, std::unique_ptr<Expression> right);
+
+};
+
+class Block : public Expression {
+public:
+
+    std::vector<std::unique_ptr<Expression>> body;
+
+    Block(Location location, std::unique_ptr<TypeToken> type, std::vector<std::unique_ptr<Expression>> body);
 
 };
 

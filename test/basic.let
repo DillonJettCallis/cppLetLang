@@ -5,11 +5,16 @@ fun addFive(z: Float): Float {
 }
 
 fun main (): Unit {
-  let x: Float = 4 + 2 * 7
+  let x: Float = { 4 + 2 } * 7
+  printd(x)
 
   let y: Float = 4 * x + 7
 
-  let z = if x > y then 0 else 1
+  let z = if x > y then {
+    0
+  } else {
+    1
+  }
 
   let nest = if z > y then if z < 4 then 4 else 7 else 1
 
