@@ -236,10 +236,10 @@ class Lexer {
     const set<string> sumOps = {"+", "-"};
     const set<string> productOps = {"*", "/"};
 
-    vector<Token> tokens;
+    vector<Token>& tokens;
     int index = 0;
 public:
-    explicit Lexer(vector<Token> tokens) : tokens(move(tokens)) {
+    explicit Lexer(vector<Token>& tokens) : tokens(tokens) {
 
     }
 
@@ -483,6 +483,22 @@ private:
             }
 
             return make_unique<Variable>(first.loc, first.word, make_unique<UnknownTypeToken>());
+        } else if (first.word == "&" && peek().word == "[") {
+            skip();
+
+            vector<unique_ptr<Expression>> values;
+
+            while (peek().word != "]") {
+                values.emplace_back(readExpression());
+
+                if (peek().word == ",") {
+                    skip();
+                }
+            }
+
+            skip();
+
+            return make_unique<ListLiteral>(first.loc, make_unique<UnknownTypeToken>(), move(values));
         }
 
         throw runtime_error(first.expected("expression"));
@@ -621,22 +637,22 @@ public:
         out << message << endl;
     }
 
-    void print(Expression *expression) {
-        ExpressionKind kind = expression->kind;
+    void print(Expression &expression) {
+        ExpressionKind kind = expression.kind;
 
         switch (kind) {
             case ExpressionKind::assignment: {
-                auto ex = (Assignment *) expression;
-                out << "{kind: 'assignment', id: '" << ex->id << "', type: " << typeName(ex->type()) << ", body: ";
-                print(ex->body.get());
+                auto &ex = (Assignment &) expression;
+                out << "{kind: 'assignment', id: '" << ex.id << "', type: " << typeName(ex.type()) << ", body: ";
+                print(*ex.body);
                 out << "}";
                 break;
             }
             case ExpressionKind::function: {
-                auto ex = (Function *) expression;
-                out << "{kind: 'function', id: '" << ex->id << "', type: " << typeName(ex->type()) << ", params: [";
+                auto &ex = (Function &) expression;
+                out << "{kind: 'function', id: '" << ex.id << "', type: " << typeName(ex.type()) << ", params: [";
 
-                auto params = ex->params;
+                auto params = ex.params;
 
                 if (!params.empty()) {
                     out << params[0];
@@ -646,76 +662,66 @@ public:
                 }
 
                 out << "], body: ";
-                print(ex->body.get());
+                print(*ex.body);
                 out << "}";
                 break;
             }
             case ExpressionKind::call: {
-                auto ex = (Call *) expression;
-                out << "{kind: 'call', type: " << typeName(ex->type()) << ", source: ";
-                print(ex->source.get());
+                auto &ex = (Call &) expression;
+                out << "{kind: 'call', type: " << typeName(ex.type()) << ", source: ";
+                print(*ex.source);
                 out << ", args: [";
-                vector<unique_ptr<Expression>> &args = ex->args;
-
-                if (!args.empty()) {
-                    print(args[0].get());
-                    for (int i = 1; i < args.size(); i++) {
-                        out << ", ";
-                        print(args[i].get());
-                    }
-                }
+                print(ex.args);
                 out << "]}";
                 break;
             }
             case ExpressionKind::ifEx: {
-                auto ex = (If *) expression;
-                out << "{kind: 'if', type: " << typeName(ex->type()) << ", condition: ";
-                print(ex->condition.get());
+                auto &ex = (If &) expression;
+                out << "{kind: 'if', type: " << typeName(ex.type()) << ", condition: ";
+                print(*ex.condition);
                 out << ", thenEx: ";
-                print(ex->thenEx.get());
+                print(*ex.thenEx);
                 out << ", elseEx: ";
-                print(ex->elseEx.get());
+                print(*ex.elseEx);
                 out << "}";
                 break;
             }
             case ExpressionKind::binaryOp: {
-                auto ex = (BinaryOp *) expression;
-                out << "{kind: 'binaryOp', type: " << typeName(ex->type()) << ", op: '" << ex->op << "', left: ";
-                print(ex->left.get());
+                auto &ex = (BinaryOp &) expression;
+                out << "{kind: 'binaryOp', type: " << typeName(ex.type()) << ", op: '" << ex.op << "', left: ";
+                print(*ex.left);
                 out << ", right: ";
-                print(ex->right.get());
+                print(*ex.right);
                 out << "}";
                 break;
             }
             case ExpressionKind::block: {
-                auto ex = (Block *) expression;
+                auto &ex = (Block &) expression;
 
-                out << "{kind: 'block', type: " << typeName(ex->type()) << ", body: [";
-                vector<unique_ptr<Expression>> &body = ex->body;
-
-                if (!body.empty()) {
-                    print(body[0].get());
-                    for (int i = 1; i < body.size(); i++) {
-                        out << ", ";
-                        print(body[i].get());
-                    }
-                }
+                out << "{kind: 'block', type: " << typeName(ex.type()) << ", body: [";
+                print(ex.body);
                 out << "]}";
                 break;
             }
             case ExpressionKind::variable: {
-                auto ex = (Variable *) expression;
-                out << "'" << ex->id<< "'";
+                auto &ex = (Variable &) expression;
+                out << "'" << ex.id<< "'";
                 break;
             }
+            case ExpressionKind::listLiteral: {
+                auto &ex = (ListLiteral &) expression;
+                out << "{kind: 'listLiteral', type: " << typeName(ex.type()) << ", values: [";
+                print(ex.values);
+                out << "]}";
+            }
             case ExpressionKind::numberLiteral: {
-                auto ex = (NumberLiteral *) expression;
-                out << ex->value ;
+                auto &ex = (NumberLiteral &) expression;
+                out << ex.value ;
                 break;
             }
             case ExpressionKind::booleanLiteral: {
-                auto ex = (BooleanLiteral *) expression;
-                out << (ex->value ? "true" : "false");
+                auto &ex = (BooleanLiteral &) expression;
+                out << (ex.value ? "true" : "false");
                 break;
             }
             case ExpressionKind::nullLiteral: {
@@ -723,7 +729,17 @@ public:
                 break;
             }
             default:
-                throw runtime_error("Unknown Expression type");
+                throw runtime_error("Unknown Expression type in printer");
+        }
+    }
+
+    void print(vector<unique_ptr<Expression>> &exes) {
+        if (!exes.empty()) {
+            print(*exes[0]);
+            for (int i = 1; i < exes.size(); i++) {
+                out << ", ";
+                print(*exes[i]);
+            }
         }
     }
 
@@ -732,17 +748,37 @@ public:
 
         switch (kind) {
             case TypeTokenKind::named: {
-                auto token = (NamedTypeToken &) typeToken;
+                auto &token = (NamedTypeToken &) typeToken;
                 return "'" + token.pretty() + "'";
             }
             case TypeTokenKind::base: {
-                auto token = (BaseTypeToken &) typeToken;
+                auto &token = (BaseTypeToken &) typeToken;
                 return "'" + token.pretty() + "'";
+            }
+            case TypeTokenKind::generic: {
+                auto &token = (GenericTypeToken &) typeToken;
+
+                string result = "'";
+                result += token.parent->base;
+                result += "<";
+
+                vector<unique_ptr<TypeToken>> &params = token.typeParams;
+
+                if (!params.empty()) {
+                    result += typeName(*params[0].get());
+                    for (int i = 1; i < params.size(); i++) {
+                        result += ", ";
+                        result += typeName(*params[i].get());
+                    }
+                }
+
+                result += ">'";
+                return result;
             }
             case TypeTokenKind::basicFunction: {
                 auto &token = (BasicFunctionTypeToken&) typeToken;
 
-                string result = "{params: [";
+                string result = "'(";
 
                 vector<unique_ptr<TypeToken>> &params = token.params;
 
@@ -754,23 +790,23 @@ public:
                     }
                 }
 
-                result += "], result: ";
+                result += ") => ";
                 result += typeName(*token.result);
-                result += "}";
+                result += "'";
 
                 return result;
             }
             case TypeTokenKind::unknown:
                 return "'<unknown>'";
             default:
-                throw runtime_error("Unknown TypeToken type");
+                throw runtime_error("Unknown TypeToken type in printer");
         }
     }
 
 };
 
-unique_ptr<Module> lex(vector<Token> tokens) {
-    auto lexer = Lexer(move(tokens));
+unique_ptr<Module> lex(vector<Token>& tokens) {
+    auto lexer = Lexer(tokens);
 
     return lexer.readModule();
 }
@@ -781,7 +817,7 @@ void printModule(Module& module, string dest) {
     printer.println("const ast = [");
 
     for (auto &ex : module.functions) {
-        printer.print(ex.get());
+        printer.print(*ex);
         printer.println(",");
     }
 

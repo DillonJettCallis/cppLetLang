@@ -189,6 +189,37 @@ private:
                 ex._type = lookupType(ex.id).clone();
                 break;
             }
+            case ExpressionKind::listLiteral: {
+                auto &ex = (ListLiteral &) expression;
+
+                if (ex.values.empty()) {
+                    vector<unique_ptr<TypeToken>> genericListType;
+                    genericListType.push_back(move(make_unique<BaseTypeToken>(BasicTypeTokenKind::Unit)));
+
+                    ex._type = make_unique<GenericTypeToken>(move(make_unique<TypeConstructorTypeToken>("List", 1)), move(genericListType));
+                } else {
+                    unique_ptr<TypeToken> listType = nullptr;
+
+                    for (auto &next : ex.values) {
+                        checkExpression(*next);
+                        auto nextType = next->type().clone();
+
+                        if (listType == nullptr) {
+                            listType = move(nextType);
+                        } else {
+                            if (*listType != *nextType) {
+                                throw runtime_error("List contains more than one type: " + next->loc().pretty());
+                            }
+                        }
+                    }
+
+                    vector<unique_ptr<TypeToken>> genericListType;
+                    genericListType.push_back(move(listType));
+
+                    ex._type = make_unique<GenericTypeToken>(move(make_unique<TypeConstructorTypeToken>("List", 1)), move(genericListType));
+                }
+                break;
+            }
             case ExpressionKind::numberLiteral:
             case ExpressionKind::booleanLiteral:
             case ExpressionKind::nullLiteral:
@@ -259,9 +290,16 @@ private:
         BaseTypeToken unitType(BasicTypeTokenKind::Unit);
 
         vector<unique_ptr<TypeToken>> printdParams;
-        printdParams.emplace_back(make_unique<BaseTypeToken>(BasicTypeTokenKind::Float));
+        printdParams.push_back(move(make_unique<BaseTypeToken>(BasicTypeTokenKind::Float)));
 
         context["printd"] = make_unique<BasicFunctionTypeToken>(move(printdParams), move(unitType.clone()));
+
+        vector<unique_ptr<TypeToken>> printdsParams;
+        vector<unique_ptr<TypeToken>> printdsListType;
+        printdsListType.push_back(move(make_unique<BaseTypeToken>(BasicTypeTokenKind::Float)));
+        printdsParams.push_back(move(make_unique<GenericTypeToken>(move(make_unique<TypeConstructorTypeToken>("List", 1)), move(printdsListType))));
+
+        context["printds"] = make_unique<BasicFunctionTypeToken>(move(printdsParams), move(unitType.clone()));
 
         context["+"] = move(makeNumberOp());
         context["-"] = move(makeNumberOp());

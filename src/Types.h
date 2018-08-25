@@ -10,6 +10,8 @@
 
 enum TypeTokenKind {
     named,
+    constructor,
+    generic,
     basicFunction,
     base,
     unknown
@@ -30,7 +32,7 @@ public:
 
     virtual bool operator==(TypeToken& other) = 0;
 
-    virtual bool operator!=(TypeToken& other);
+    bool operator!=(TypeToken& other);
 
     virtual std::unique_ptr<TypeToken> clone() = 0;
 
@@ -48,6 +50,38 @@ public:
     bool operator==(TypeToken& other) override;
 
      std::unique_ptr<TypeToken> clone() override;
+
+    std::string pretty() override;
+
+};
+
+class TypeConstructorTypeToken : public TypeToken {
+public:
+
+    std::string base;
+    int size;
+
+    TypeConstructorTypeToken(std::string base, int size);
+
+    bool operator==(TypeToken& other) override;
+
+    std::unique_ptr<TypeToken> clone() override;
+
+    std::string pretty() override;
+
+};
+
+class GenericTypeToken : public TypeToken {
+public:
+
+    std::unique_ptr<TypeConstructorTypeToken> parent;
+    std::vector<std::unique_ptr<TypeToken>> typeParams;
+
+    GenericTypeToken(std::unique_ptr<TypeConstructorTypeToken> parent, std::vector<std::unique_ptr<TypeToken>> typeParams);
+
+    bool operator==(TypeToken& other) override;
+
+    std::unique_ptr<TypeToken> clone() override;
 
     std::string pretty() override;
 
@@ -96,5 +130,9 @@ public:
     std::string pretty() override;
 
 };
+
+std::string typeName(TypeToken& type);
+
+std::string typeName(std::vector<std::unique_ptr<TypeToken>>& type);
 
 #endif //TYPEDLETLANG_TYPES_H

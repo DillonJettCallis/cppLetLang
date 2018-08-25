@@ -27,6 +27,7 @@ class Compiler {
     llvm::IRBuilder<> builder;
 
     vector<map<string, llvm::Value *>> contextStack;
+    map<string, llvm::Type *> types;
 
 public:
     Compiler() : mod(llvm::Module("main", con)), builder(con) {
@@ -88,7 +89,7 @@ private:
 
                 llvm::Value *args[rawArgs->size()];
 
-                for (int i = 0; i < rawArgs->size(); i++) {
+                for (unsigned int i = 0; i < rawArgs->size(); i++) {
                     args[i] = compile((*rawArgs)[i].get());
                 }
 
@@ -160,6 +161,30 @@ private:
                 }
 
                 return var;
+            }
+            case ExpressionKind::listLiteral: {
+                auto ex = (ListLiteral *) expression;
+                auto size = ex->values.size();
+
+                // TODO: List types besides Float
+                auto createArray = lookupValue("createArray");
+                auto intType = llvm::IntegerType::get(con, 32);
+                auto sizeConst = llvm::ConstantInt::get(intType,  size, false);
+                auto doubleConst = llvm::ConstantInt::get(intType,  sizeof(double), false);
+
+                auto array = builder.CreateAlloca(types["arrayRefType"], nullptr, "tempArray");
+
+                builder.CreateCall(createArray, { array, sizeConst, sizeConst, doubleConst });
+
+                auto doubleInsert = lookupValue("mutableInsertArrayDouble");
+
+                unsigned int index = 0;
+                for (auto &nextEx : ex->values) {
+                    auto nextValue = compile(nextEx.get());
+                    builder.CreateCall(doubleInsert, {array, llvm::ConstantInt::get(intType,  index++, false), nextValue} );
+                }
+
+                return array;
             }
             case ExpressionKind::numberLiteral: {
                 auto ex = (NumberLiteral *) expression;
@@ -322,10 +347,40 @@ private:
     void setupLibrary() {
         map<string, llvm::Value*> context;
 
+        auto voidType = llvm::Type::getVoidTy(con);
+        auto intType = llvm::IntegerType::get(con, 32);
+
+        llvm::ArrayRef<llvm::Type *> arrayRefMembers = {llvm::PointerType::getInt8PtrTy(con), intType, intType, intType};
+        auto arrayRefType = llvm::StructType::create(con, arrayRefMembers, "ArrayRef");
+        auto arrayRefPointerType = llvm::PointerType::get(arrayRefType, 0);
+        types["arrayRefType"] = arrayRefType;
+        types["arrayRefPointerType"] = arrayRefPointerType;
+
         llvm::ArrayRef<llvm::Type *> args = {llvm::Type::getDoubleTy(con)};
-        auto printdType = llvm::FunctionType::get(llvm::Type::getVoidTy(con), args, false);
+        auto printdType = llvm::FunctionType::get(voidType, args, false);
         mod.getOrInsertFunction("printd", printdType);
         context["printd"] = mod.getFunction("printd");
+
+        llvm::ArrayRef<llvm::Type *> printdsArgs = { arrayRefPointerType };
+        auto printdsType = llvm::FunctionType::get(voidType, printdsArgs, false);
+        mod.getOrInsertFunction("printds", printdsType);
+        context["printds"] = mod.getFunction("printds");
+
+
+        llvm::ArrayRef<llvm::Type*> createArrayArgs = { arrayRefPointerType, intType, intType, intType};
+        auto createArrayType = llvm::FunctionType::get(voidType, createArrayArgs, false);
+        mod.getOrInsertFunction("createArray", createArrayType);
+        context["createArray"] = mod.getFunction("createArray");
+
+        llvm::ArrayRef<llvm::Type*> destroyArrayArgs = { arrayRefPointerType };
+        auto destroyArrayType = llvm::FunctionType::get(voidType, destroyArrayArgs, false);
+        mod.getOrInsertFunction("destroyArray", destroyArrayType);
+        context["destroyArray"] = mod.getFunction("destroyArray");
+
+        llvm::ArrayRef<llvm::Type*> mutableInsertArrayDoubleArgs = { arrayRefPointerType, intType, llvm::Type::getDoubleTy(con) };
+        auto mutableInsertArrayDoubleType = llvm::FunctionType::get(voidType, mutableInsertArrayDoubleArgs, false);
+        mod.getOrInsertFunction("mutableInsertArrayDouble", mutableInsertArrayDoubleType);
+        context["mutableInsertArrayDouble"] = mod.getFunction("mutableInsertArrayDouble");
 
         contextStack.clear();
         contextStack.push_back(move(context));

@@ -18,6 +18,7 @@ enum ExpressionKind {
     binaryOp,
     block,
     variable,
+    listLiteral,
     numberLiteral,
     booleanLiteral,
     nullLiteral
@@ -107,6 +108,15 @@ public:
     std::string id;
 
     Variable(Location location, std::string id, std::unique_ptr<TypeToken> type);
+
+};
+
+class ListLiteral : public Expression {
+public:
+
+    std::vector<std::unique_ptr<Expression>> values;
+
+    ListLiteral(Location location, std::unique_ptr<TypeToken> type, std::vector<std::unique_ptr<Expression>> values);
 
 };
 

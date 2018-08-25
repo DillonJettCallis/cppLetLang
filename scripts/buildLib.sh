@@ -1,3 +1,3 @@
 #!/bin/sh
 
-clang++ -c -Wall -o build/core.o lib/core.cpp
+clang -c -Wall -o build/core.o lib/core.c

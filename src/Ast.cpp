@@ -67,6 +67,9 @@ Variable::Variable(Location location, string id, unique_ptr<TypeToken> type) :
 
 }
 
+ListLiteral::ListLiteral(Location location, unique_ptr<TypeToken> type, vector<unique_ptr<Expression>> values) :
+    Expression(ExpressionKind::listLiteral, move(location), move(type)), values(move(values)) {}
+
 NumberLiteral::NumberLiteral(Location location, double value) : Expression(ExpressionKind::numberLiteral, move(location), make_unique<BaseTypeToken>(BasicTypeTokenKind::Float)), value(value) {}
 
 BooleanLiteral::BooleanLiteral(Location location, bool value) : Expression(ExpressionKind::booleanLiteral, move(location), make_unique<BaseTypeToken>(BasicTypeTokenKind::Boolean)), value(value) {}

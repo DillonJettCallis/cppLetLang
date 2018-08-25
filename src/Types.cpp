@@ -13,7 +13,7 @@ bool TypeToken::operator!=(TypeToken& other) {
     return !(*this == other);
 }
 
-NamedTypeToken::NamedTypeToken(std::string id) : TypeToken(TypeTokenKind::named), id(move(id)) {}
+NamedTypeToken::NamedTypeToken(string id) : TypeToken(TypeTokenKind::named), id(move(id)) {}
 
 bool NamedTypeToken::operator==(TypeToken& other) {
     return other.kind == TypeTokenKind::named && ((NamedTypeToken&) other).id == id;
@@ -27,10 +27,76 @@ string NamedTypeToken::pretty() {
     return "<" + id + ">";
 }
 
-BasicFunctionTypeToken::BasicFunctionTypeToken(std::vector<std::unique_ptr<TypeToken>> params, std::unique_ptr<TypeToken> result) :
+TypeConstructorTypeToken::TypeConstructorTypeToken(string base, int size) :
+    TypeToken(TypeTokenKind::constructor),
+    base(move(base)),
+    size(size) {
+}
+
+bool TypeConstructorTypeToken::operator==(TypeToken& other) {
+    if (other.kind == TypeTokenKind::constructor) {
+        auto &realOther = (TypeConstructorTypeToken&) other;
+
+        return base == realOther.base;
+    } else {
+        return false;
+    }
+}
+
+unique_ptr<TypeToken> TypeConstructorTypeToken::clone() {
+    return make_unique<TypeConstructorTypeToken>(base, size);
+}
+
+string TypeConstructorTypeToken::pretty() {
+    string result = base + "<?";
+
+    for (int i = 1; i < size; i++) {
+        result += ", ?";
+    }
+
+    result += ">";
+
+    return result;
+}
+
+GenericTypeToken::GenericTypeToken(unique_ptr<TypeConstructorTypeToken> parent, vector<unique_ptr<TypeToken>> typeParams) :
+    TypeToken(TypeTokenKind::generic),
+    parent(move(parent)),
+    typeParams(move(typeParams)) {
+
+}
+
+bool GenericTypeToken::operator==(TypeToken& other) {
+    if (other.kind == TypeTokenKind::generic) {
+        auto &realOther = (GenericTypeToken&) other;
+
+        return *parent == *realOther.parent && equal(typeParams.begin(), typeParams.end(), realOther.typeParams.begin(), [](const unique_ptr<TypeToken>& left, const unique_ptr<TypeToken>& right){ return *left == *right;});
+    } else {
+        return false;
+    }
+}
+
+unique_ptr<TypeToken> GenericTypeToken::clone() {
+    vector<unique_ptr<TypeToken>> newParams;
+    newParams.reserve(typeParams.size());
+
+    for (auto &param : typeParams) {
+        newParams.push_back(move(param->clone()));
+    }
+
+    auto *parentClone = dynamic_cast<TypeConstructorTypeToken*>(parent->clone().release());
+
+    return make_unique<GenericTypeToken>(move(unique_ptr<TypeConstructorTypeToken>(parentClone)), move(newParams));
+}
+
+string GenericTypeToken::pretty() {
+    return parent->base + "<" + typeName(typeParams) + ">";
+}
+
+BasicFunctionTypeToken::BasicFunctionTypeToken(vector<unique_ptr<TypeToken>> params, unique_ptr<TypeToken> result) :
         TypeToken(TypeTokenKind::basicFunction),
-        params(std::move(params)),
-        result(std::move(result)) {
+        params(move(params)),
+        result(move(result)) {
 
 }
 
@@ -110,3 +176,22 @@ unique_ptr<TypeToken> UnknownTypeToken::clone() {
 string UnknownTypeToken::pretty() {
     return "<Unknown>";
 }
+
+string typeName(TypeToken& type) {
+    return type.pretty();
+}
+
+string typeName(vector<unique_ptr<TypeToken>>& type) {
+    string result;
+
+    if (!type.empty()) {
+        result += typeName(*type[0].get());
+        for (int i = 1; i < type.size(); i++) {
+            result += ", ";
+            result += typeName(*type[i].get());
+        }
+    }
+
+    return result;
+}
+
