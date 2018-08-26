@@ -27,6 +27,7 @@ class Compiler {
     llvm::IRBuilder<> builder;
 
     vector<map<string, llvm::Value *>> contextStack;
+    vector<vector<llvm::AllocaInst*>> declaredArraysStack;
     map<string, llvm::Type *> types;
 
 public:
@@ -44,6 +45,7 @@ public:
         }
 
         contextStack.push_back(move(context));
+        declaredArraysStack.emplace_back();
 
         for (auto &fun : ex->functions) {
             compileFunction(fun.get());
@@ -143,11 +145,24 @@ private:
             case ExpressionKind::block: {
                 auto ex = (Block *) expression;
 
+                contextStack.emplace_back();
+                declaredArraysStack.emplace_back();
+
                 // TODO: Think about Unit better.
                 llvm::Value *last = llvm::ConstantFP::get(con, llvm::APFloat(0.0));
 
                 for (auto &next : ex->body) {
                     last = compile(next.get());
+                }
+
+                contextStack.pop_back();
+                auto lastDelaredScope = declaredArraysStack.back();
+                declaredArraysStack.pop_back();
+
+                auto destroyArray = lookupValue("destroyArray");
+
+                for (auto &next : lastDelaredScope) {
+                    builder.CreateCall(destroyArray, { next });
                 }
 
                 return last;
@@ -173,6 +188,7 @@ private:
                 auto doubleConst = llvm::ConstantInt::get(intType,  sizeof(double), false);
 
                 auto array = builder.CreateAlloca(types["arrayRefType"], nullptr, "tempArray");
+                declaredArraysStack.back().push_back(array);
 
                 builder.CreateCall(createArray, { array, sizeConst, sizeConst, doubleConst });
 
@@ -241,7 +257,6 @@ private:
             }
         }
 
-
         contextStack.push_back(move(context));
         llvm::Value *result = compile(rawBody->get());
 
@@ -253,7 +268,6 @@ private:
         }
 
         contextStack.pop_back();
-
 
         builder.SetInsertPoint(initStartPoint);
 
