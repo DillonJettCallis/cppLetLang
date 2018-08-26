@@ -21,7 +21,12 @@ fun main (): Unit = {
 
   printd(addFive(nest))
 
-  printds(&[1, 2, 3, 4, 5, 6, 7, x, y, z, nest])
+    {
+        let values = &[1, 2, 3, 4, 5, 6, 7, x, y, z, nest]
+
+        printds(values)
+    }
+  printd(0)
 }
 
 

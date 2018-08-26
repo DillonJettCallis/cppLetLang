@@ -15,9 +15,11 @@ void printd(double v) {
 void printds(struct ArrayRef* source) {
     struct ArrayRef ref = *source;
 
-    for (void* i = ref.arr; i < ref.arr + ref.size * ref.itemSize; i += ref.itemSize) {
+    for (void* i = ref.arr; i < ref.arr + (ref.size - 1) * ref.itemSize; i += ref.itemSize) {
         printf("%f, ", *((double*) i));
     }
+
+    printf("%f\n", *((double*) (ref.arr + (ref.size - 1) * ref.itemSize)));
 }
 
 void createArray(struct ArrayRef* ref, unsigned int size, unsigned int capacity, unsigned int itemSize) {
